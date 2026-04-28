@@ -4,7 +4,8 @@ import crypto from 'crypto';
 import { 
   Webhook, 
   WebhookDelivery, 
-  WebhookEventType, 
+  WebhookEventType,
+  WebhookEventPayloadMap,
   WebhookCreateInput, 
   WebhookUpdateInput 
 } from '../types/webhook';
@@ -99,7 +100,7 @@ export class WebhookService {
   /**
    * Dispatch an event to all applicable webhooks
    */
-  async dispatchEvent(userId: string, eventType: WebhookEventType, data: any): Promise<void> {
+  async dispatchEvent<E extends WebhookEventType>(userId: string, eventType: E, data: WebhookEventPayloadMap[E]): Promise<void> {
     try {
       // Find all enabled webhooks for this user subscribed to this event
       const { data: webhooks, error } = await supabase
@@ -164,7 +165,7 @@ export class WebhookService {
   /**
    * Create a delivery record
    */
-  private async createDelivery(webhookId: string, eventType: WebhookEventType, payload: any): Promise<WebhookDelivery> {
+  private async createDelivery<E extends WebhookEventType>(webhookId: string, eventType: E, payload: { id: string; type: E; created: number; data: WebhookEventPayloadMap[E] }): Promise<WebhookDelivery> {
     const { data, error } = await supabase
       .from('webhook_deliveries')
       .insert({
@@ -204,7 +205,7 @@ export class WebhookService {
       throw new Error(`Delivery ${deliveryId} not found`);
     }
 
-    const webhook = (delivery as any).webhooks as Webhook;
+    const webhook = (delivery as WebhookDelivery & { webhooks: Webhook }).webhooks;
     const payloadString = JSON.stringify(delivery.payload);
     const signature = crypto
       .createHmac('sha256', webhook.secret)

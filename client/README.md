@@ -86,7 +86,7 @@ client/
 
 ### Prerequisites
 - Node.js 20+
-- npm, yarn, or pnpm
+- npm, yarn, or npm
 
 ### Installation
 
@@ -96,7 +96,7 @@ npm install
 # or
 yarn install
 # or
-pnpm install
+npm install
 ```
 
 ### Environment Variables

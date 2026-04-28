@@ -3,8 +3,9 @@ import { createApiRoute, createSuccessResponse, validateRequestBody, RateLimiter
 import { HttpStatus } from "@/lib/api/types"
 import { z } from "zod"
 import { PaymentService } from "@/lib/payment-service"
+import { getAvailablePaymentProviders, isPaymentProviderEnabled } from "@/lib/feature-flags"
 
-// Validation schema
+// Validation schema - dynamically validate provider based on what's enabled
 const paymentSchema = z.object({
   amount: z.number().positive("Amount must be positive"),
   currency: z
@@ -14,7 +15,13 @@ const paymentSchema = z.object({
   token: z.string().min(1, "Payment token is required"),
   planName: z.string().min(1, "Plan name is required"),
   provider: z.enum(["stripe", "paypal", "mock"]).default("stripe"),
-});
+}).refine(
+  (data) => isPaymentProviderEnabled(data.provider),
+  (data) => ({
+    message: `Payment provider '${data.provider}' is not enabled. Available providers: ${getAvailablePaymentProviders().join(', ')}`,
+    path: ['provider'],
+  })
+);
 
 export const POST = createApiRoute(
   async (request: NextRequest, context, user) => {

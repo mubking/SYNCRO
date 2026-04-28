@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { X, Search, Plus, ChevronDown, ExternalLink } from "lucide-react"
+import { X, Search, Plus, ChevronDown, ExternalLink, AlertTriangle } from "lucide-react"
 import {
   SUBSCRIPTION_TEMPLATES,
   TEMPLATE_CATEGORIES,
@@ -9,6 +9,7 @@ import {
   type SubscriptionTemplate,
   type PriceTier,
 } from "@/lib/subscription-templates"
+import { wouldExceedBudget } from "@/lib/budget-utils"
 
 const DIFFICULTY_LABEL: Record<string, { label: string; color: string }> = {
   easy: { label: "Easy to cancel", color: "text-green-500" },
@@ -20,10 +21,14 @@ export default function AddSubscriptionModal({
   onAdd,
   onClose,
   darkMode,
+  currentMonthlyTotal = 0,
+  budgetLimit,
 }: {
   onAdd: (subscription: any) => void
   onClose: () => void
   darkMode?: boolean
+  currentMonthlyTotal?: number
+  budgetLimit?: number
 }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTemplate, setSelectedTemplate] = useState<SubscriptionTemplate | null>(null)
@@ -90,6 +95,14 @@ export default function AddSubscriptionModal({
     if (!formData.name || !formData.price) return
     onAdd(buildPayload())
   }
+
+  const newMonthlyPrice = formData.price
+    ? parseFloat(formData.price) / (formData.billingCycle === "yearly" ? 12 : formData.billingCycle === "quarterly" ? 3 : 1)
+    : 0
+  const budgetWarning =
+    budgetLimit && newMonthlyPrice > 0
+      ? wouldExceedBudget(currentMonthlyTotal, newMonthlyPrice, budgetLimit)
+      : null
 
   const base = darkMode ? "bg-[#2D3748] text-[#F9F6F2]" : "bg-white text-[#1E2A35]"
   const input = darkMode
@@ -397,6 +410,19 @@ export default function AddSubscriptionModal({
 
         {/* Footer */}
         <div className={`p-6 border-t ${darkMode ? "border-[#374151]" : "border-gray-200"}`}>
+          {budgetWarning?.exceeds && (
+            <div className={`mb-4 p-3 rounded-lg border flex items-start gap-2 ${
+              darkMode ? "bg-yellow-900/20 border-yellow-700" : "bg-yellow-50 border-yellow-200"
+            }`}>
+              <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" aria-hidden="true" />
+              <p className={`text-sm ${darkMode ? "text-yellow-300" : "text-yellow-800"}`}>
+                ⚠️ Adding this subscription would bring your monthly total to{" "}
+                <strong>${budgetWarning.newTotal.toFixed(2)}</strong>, exceeding your{" "}
+                <strong>${budgetLimit!.toFixed(2)}</strong> budget by{" "}
+                <strong>${budgetWarning.overage.toFixed(2)}</strong>.
+              </p>
+            </div>
+          )}
           <div className="flex gap-3">
             <button
               onClick={onClose}

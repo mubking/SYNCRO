@@ -1,27 +1,78 @@
+/**
+ * DashboardClient — client component for the /dashboard route.
+ *
+ * Architecture note:
+ *   This component is the client half of the /dashboard server/client split.
+ *   Its server counterpart (app/dashboard/page.tsx) is responsible for:
+ *     - Auth guard (redirects unauthenticated users to /auth/login)
+ *     - Initial data fetching (subscriptions, email accounts, team members,
+ *       notifications, profile) via Supabase server client
+ *
+ *   This component is responsible for:
+ *     - All interactive UI: sign-out, GDPR export/delete, subscription display
+ *     - Client-side state derived from the server-fetched initial props
+ *     - No data fetching of its own — it consumes props from the server page
+ *
+ *   This route (/dashboard) is a focused, lightweight view. The full-featured
+ *   app shell (multi-view, undo/redo, modals, analytics) lives at / via
+ *   AppClient (client/components/app/app-client.tsx).
+ */
 "use client"
 
-import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
-import { SuggestionsPanel } from "@/components/app/SuggestionsPanel"
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
+import EmptyStateExperience from "./empty-state-experience";
+import { createSubscription } from "@/lib/supabase/subscriptions";
+import { SuggestionsPanel } from "@/components/app/SuggestionsPanel";
 
 interface Subscription {
-  id: string
-  name: string
-  price: number
-  status: string
-  billing_cycle: string
-  next_renewal: string
-  category: string
+  id: string;
+  name: string;
+  price: number;
+  status: string;
+  billing_cycle: string;
+  next_renewal: string;
+  category: string;
+}
+
+interface EmailAccount {
+  id: string;
+  email: string;
+  provider: string;
+  connected_at: string;
+}
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface Notification {
+  id: string;
+  type: string;
+  message: string;
+  read: boolean;
+  created_at: string;
+}
+
+interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  full_name?: string;
+  avatar_url?: string;
 }
 
 interface DashboardClientProps {
-  initialSubscriptions: Subscription[]
-  initialEmailAccounts: any[]
-  initialTeamMembers: any[]
-  initialNotifications: any[]
-  initialProfile: any
-  user: User
+  initialSubscriptions: Subscription[];
+  initialEmailAccounts: EmailAccount[];
+  initialTeamMembers: TeamMember[];
+  initialNotifications: Notification[];
+  initialProfile: Profile;
+  user: User;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -39,11 +90,40 @@ export default function DashboardClient({
   initialProfile,
   user,
 }: DashboardClientProps) {
-  const [subscriptions] = useState(initialSubscriptions)
+  const [subscriptions, setSubscriptions] = useState(initialSubscriptions)
   const [notifications] = useState(initialNotifications)
   // initialEmailAccounts reserved for future email account display
   const [gdprLoading, setGdprLoading] = useState<"export" | "delete" | null>(null)
   const [gdprMessage, setGdprMessage] = useState<string | null>(null)
+
+  const handleAddSubscription = async (subscriptionData: any) => {
+    try {
+      const newSubscription = await createSubscription({
+        name: subscriptionData.name,
+        category: subscriptionData.category,
+        price: subscriptionData.price,
+        icon: subscriptionData.icon || "🔗",
+        color: subscriptionData.color || "#000000",
+        renews_in: 30,
+        status: "active",
+        renewal_url: subscriptionData.renewal_url || null,
+        tags: subscriptionData.tags || [],
+        date_added: new Date().toISOString(),
+        billing_cycle: subscriptionData.billing_cycle || "monthly",
+        source: "manual",
+        manually_edited: false,
+        edited_fields: [],
+        pricing_type: "fixed",
+        is_trial: false,
+        credit_card_required: false,
+        email_account_id: null,
+      })
+      
+      setSubscriptions((prev: Subscription[]) => [newSubscription, ...prev])
+    } catch (error) {
+      console.error("Error adding subscription:", error)
+    }
+  }
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -118,7 +198,7 @@ export default function DashboardClient({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
             { label: "Subscriptions", value: subscriptions.length },
-            { label: "Active", value: subscriptions.filter(s => s.status === "active").length },
+            { label: "Active", value: subscriptions.filter((s: Subscription) => s.status === "active").length },
             { label: "Team Members", value: initialTeamMembers.length },
             { label: "Unread Alerts", value: unreadCount },
           ].map(({ label, value }) => (
@@ -136,9 +216,10 @@ export default function DashboardClient({
           </div>
 
           {subscriptions.length === 0 ? (
-            <p className="px-4 sm:px-6 py-8 text-sm text-gray-500 text-center">
-              No subscriptions yet.
-            </p>
+            <EmptyStateExperience 
+              onAddSubscription={handleAddSubscription}
+              darkMode={false}
+            />
           ) : (
             <>
               {/* Desktop table — hidden on mobile */}
@@ -152,7 +233,7 @@ export default function DashboardClient({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {subscriptions.map(sub => (
+                    {subscriptions.map((sub: Subscription) => (
                       <tr key={sub.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 font-medium text-gray-900">{sub.name}</td>
                         <td className="px-6 py-4 text-gray-600 capitalize">{sub.category}</td>
@@ -174,7 +255,7 @@ export default function DashboardClient({
 
               {/* Mobile cards — hidden on sm+ */}
               <ul className="sm:hidden divide-y divide-gray-100">
-                {subscriptions.map(sub => (
+                {subscriptions.map((sub: Subscription) => (
                   <li key={sub.id} className="px-4 py-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-medium text-gray-900">{sub.name}</span>

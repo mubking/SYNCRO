@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import { z } from 'zod';
 import crypto from 'crypto';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest, requireScope } from '../middleware/auth';

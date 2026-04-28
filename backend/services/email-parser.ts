@@ -1,3 +1,5 @@
+import { llmParser } from '../src/services/llm-parser';
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ParseEmailInput {
@@ -57,6 +59,36 @@ const INTERVAL_MATCHERS: IntervalMatcher[] = [
 ]
 
 // ── Exported function ─────────────────────────────────────────────────────────
+
+/** Async variant — tries regex first, falls back to Gemini if confidence < 0.9 */
+export async function parseSubscriptionEmailWithFallback(
+  input: ParseEmailInput,
+): Promise<ParsedSubscription | null> {
+  const regexResult = parseSubscriptionEmail(input);
+
+  if (regexResult && regexResult.confidence >= 0.9) return regexResult;
+
+  if (!llmParser.isAvailable) return regexResult;
+
+  const combined = `${input.subject ?? ''}\n${input.body ?? ''}`.trim();
+  const llmResult = await llmParser.parse(combined);
+
+  if (!llmResult) return regexResult;
+
+  // Prefer LLM result when it has higher confidence
+  if (!regexResult || llmResult.confidence > regexResult.confidence) {
+    return {
+      name: llmResult.name,
+      amount: llmResult.amount,
+      currency: llmResult.currency,
+      interval: llmResult.interval,
+      signals: [],
+      confidence: llmResult.confidence,
+    };
+  }
+
+  return regexResult;
+}
 
 export function parseSubscriptionEmail({
   subject,

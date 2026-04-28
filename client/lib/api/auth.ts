@@ -53,25 +53,44 @@ export async function requireAuth(request: NextRequest) {
   return user
 }
 
-/**
- * Require specific role/permission
- * Extend this based on your authorization model
- */
+export type UserRole = 'owner' | 'admin' | 'member' | 'viewer' | 'user'
+
+export const ROLE_HIERARCHY: Record<UserRole, number> = {
+  owner: 5,
+  admin: 4,
+  member: 3,
+  viewer: 2,
+  user: 1,
+}
+
+async function getUserRole(userId: string): Promise<UserRole> {
+  const supabase = await createClient()
+  
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .single()
+
+  if (error || !data?.role) {
+    return 'user'
+  }
+
+  return data.role as UserRole
+}
+
 export async function requireRole(
   request: NextRequest,
-  allowedRoles: string[]
+  allowedRoles: UserRole[]
 ) {
   const user = await getAuthenticatedUser(request)
-  
-  // TODO: Implement role checking based on your user model
-  // For now, we'll check user metadata or a roles table
-  const userRole = user.user_metadata?.role || 'user'
+  const userRole = await getUserRole(user.id)
   
   if (!allowedRoles.includes(userRole)) {
     throw ApiErrors.forbidden(`Requires one of: ${allowedRoles.join(', ')}`)
   }
 
-  return user
+  return { user, role: userRole }
 }
 
 /**
@@ -99,24 +118,34 @@ export function checkOwnership(userId: string, resourceUserId: string) {
   }
 }
 
-/**
- * API Route Handler with Authentication
- * Wrapper for authenticated API routes
- */
+export async function requireMinRole(
+  request: NextRequest,
+  minRole: UserRole
+) {
+  const user = await getAuthenticatedUser(request)
+  const userRole = await getUserRole(user.id)
+  
+  if (ROLE_HIERARCHY[userRole] < ROLE_HIERARCHY[minRole]) {
+    throw ApiErrors.forbidden(`Requires ${minRole} role or higher`)
+  }
+
+  return { user, role: userRole }
+}
+
 export function withAuth<T extends unknown[]>(
   handler: (request: NextRequest, user: Awaited<ReturnType<typeof getAuthenticatedUser>>, ...args: T) => Promise<Response>,
   options?: {
-    requireRole?: string[]
+    requireRole?: UserRole[]
   }
 ) {
   return async (request: NextRequest, ...args: T): Promise<Response> => {
     let user = await getAuthenticatedUser(request)
     
     if (options?.requireRole) {
-      user = await requireRole(request, options.requireRole)
+      const result = await requireRole(request, options.requireRole)
+      user = result.user
     }
 
     return handler(request, user, ...args)
   }
 }
-

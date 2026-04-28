@@ -13,13 +13,13 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: pnpm/action-setup@v4
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "pnpm"
@@ -31,7 +31,7 @@ jobs:
       - name: Run client unit tests
         run: pnpm test
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: client-coverage-report
@@ -49,9 +49,9 @@ jobs:
       JWT_SECRET: test-secret
       ADMIN_API_KEY: test-admin-key
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -63,7 +63,7 @@ jobs:
       - name: Run tests with coverage
         run: npm test -- --coverage --ci
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-report

@@ -17,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
 
@@ -62,10 +62,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
           cache: 'npm'
@@ -75,14 +75,9 @@ jobs:
         working-directory: client
         run: npm audit --audit-level=high --omit=dev
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Audit backend dependencies
         working-directory: backend
-        run: pnpm audit --audit-level=high --prod
+        run: npm audit --audit-level=high --omit=dev
 
   # ──────────────────────────────────────────────
   # Job 3: Build the client
@@ -95,23 +90,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: client/pnpm-lock.yaml
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
 
       - name: Install client dependencies
         working-directory: client
-        run: pnpm install --no-frozen-lockfile
+        run: npm ci
 
       - name: Build client
         working-directory: client
@@ -122,7 +112,56 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
-        run: pnpm run build
+        run: npm run build
+
+  # ──────────────────────────────────────────────
+  # Job 4: SDK — install, build, test
+  # Runs in parallel with build-client and test-backend.
+  # Blocks merges on any SDK regression.
+  # ──────────────────────────────────────────────
+  test-sdk:
+    name: SDK — Build & Test
+    runs-on: ubuntu-latest
+    needs: [validate-env, security-audit]
+
+    defaults:
+      run:
+        working-directory: sdk
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          # Matches sdk/.tool-versions (nodejs 23.4.0)
+          node-version: "23.4.0"
+          cache: "npm"
+          cache-dependency-path: |
+            sdk/package-lock.json
+            sdk/package.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        # ESM Jest requires the experimental VM modules flag
+        env:
+          NODE_OPTIONS: --experimental-vm-modules
+        run: npm test -- --ci --coverage
+
+      - name: Upload test artifacts on failure
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: sdk-test-results
+          path: |
+            sdk/coverage/
+          retention-days: 7
 
   # ──────────────────────────────────────────────
   # Job 3: Run backend tests
@@ -135,7 +174,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -143,7 +182,7 @@ jobs:
           version: 9
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "pnpm"
@@ -164,10 +203,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"

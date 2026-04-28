@@ -80,21 +80,20 @@ async function resolveUserFromTokenOrSession(
 // ─── Data Export ─────────────────────────────────────────────────────────────
 
 router.get('/export', authenticate, exportRateLimit, async (req: AuthenticatedRequest, res: Response) => {
-  const userId = req.user!.id;
-  const data = await complianceService.gatherUserData(userId);
+  try {
+    const userId = req.user!.id;
+    const data = await complianceService.gatherUserData(userId);
 
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="syncro-data-export-${Date.now()}.zip"`);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="syncro-data-export-${Date.now()}.zip"`);
 
-  const archive = archiver('zip', { zlib: { level: 9 } });
-  archive.on('error', (err) => logger.error('Archiver error:', err));
-  archive.pipe(res);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.on('error', (err) => logger.error('Archiver error:', err));
+    archive.pipe(res);
 
     archive.on('error', (err) => {
       logger.error('Archiver error during export:', err);
     });
-
-  await archive.finalize();
 
     archive.append(JSON.stringify(data.profile, null, 2), { name: 'profile.json' });
     archive.append(JSON.stringify(data.subscriptions, null, 2), { name: 'subscriptions.json' });

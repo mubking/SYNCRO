@@ -479,7 +479,7 @@ router.get('/auto-tag', async (req: AuthenticatedRequest, res: Response) => {
 // Called when user clicks "Open Site" to log last_interaction_at
 router.post('/:id/track-interaction', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const subscriptionId = resolveParam(req.params.id);
+    const subscriptionId = req.params.id;
     const now = new Date().toISOString();
 
     const { error } = await (await import('../config/database')).supabase

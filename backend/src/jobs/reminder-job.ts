@@ -1,6 +1,8 @@
 import cron from 'node-cron';
 import { reminderEngine } from '../services/reminder-engine';
 import { notificationPreferenceService } from '../services/notification-preference-service';
+import { checkBudgetAlerts } from '../services/budget-alert-service';
+import { supabase } from '../config/database';
 import logger from '../config/logger';
 
 /**
@@ -49,6 +51,25 @@ cron.schedule('*/30 * * * *', async () => {
     logger.info('Cron: retries processed successfully');
   } catch (error) {
     logger.error('Cron: failed to process retries:', error);
+  }
+});
+
+// Budget alerts — runs at 10:00 UTC daily
+cron.schedule('0 10 * * *', async () => {
+  logger.info('Cron: checking budget alerts');
+  try {
+    // Fetch all distinct user IDs that have a monthly_budget set
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id')
+      .not('monthly_budget', 'is', null);
+
+    await Promise.allSettled(
+      (profiles ?? []).map((p: { id: string }) => checkBudgetAlerts(p.id))
+    );
+    logger.info('Cron: budget alerts processed');
+  } catch (error) {
+    logger.error('Cron: failed to process budget alerts:', error);
   }
 });
 

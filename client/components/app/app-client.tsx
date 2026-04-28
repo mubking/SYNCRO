@@ -29,6 +29,7 @@ import type { Subscription as DBSubscription } from "@/lib/supabase/subscription
 import { createSubscription } from "@/lib/supabase/subscriptions";
 import { isOnline } from "@/lib/network-utils";
 import type { Currency } from "@/lib/currency-utils";
+import type { DetectedSubscription } from "@/lib/notification-types";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmationDialog } from "@/hooks/use-confirmation-dialog";
@@ -54,14 +55,17 @@ import { checkBudgetAlerts } from "@/lib/budget-utils";
 import { apiPost } from "@/lib/api";
 
 import { analyticsApi, AnalyticsSummary } from "@/lib/api/analytics";
+import type {
+    AppClientProps,
+    EmailAccount,
+    Payment,
+    PriceChange,
+    ConsolidationSuggestion,
+    Workspace,
+    SubscriptionUpdates,
+} from "./app-client.types";
 
-interface AppClientProps {
-    initialSubscriptions: DBSubscription[];
-    initialEmailAccounts: any[];
-    initialPayments: any[];
-    initialPriceChanges?: any[];
-    initialConsolidationSuggestions?: any[];
-}
+interface AppContentProps extends AppClientProps {}
 
 export function AppClient({
     initialSubscriptions,
@@ -91,10 +95,10 @@ function AppContent({
     initialConsolidationSuggestions = [],
 }: {
     initialSubscriptions: DBSubscription[];
-    initialEmailAccounts: any[];
-    initialPayments?: any[];
-    initialPriceChanges?: any[];
-    initialConsolidationSuggestions?: any[];
+    initialEmailAccounts: EmailAccount[];
+    initialPayments?: Payment[];
+    initialPriceChanges?: PriceChange[];
+    initialConsolidationSuggestions?: ConsolidationSuggestion[];
 }) {
     // Analytics state
     const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | undefined>(undefined);
@@ -107,7 +111,7 @@ function AppContent({
     const [accountType, setAccountType] = useState<
         "individual" | "team" | "enterprise"
     >("individual");
-    const [workspace, setWorkspace] = useState<any>(null);
+    const [workspace, setWorkspace] = useState<Workspace | null>(null);
     const [activeView, setActiveView] = useState("dashboard");
     const [currentPlan, setCurrentPlan] = useState("free");
     const [darkMode, setDarkMode] = useState(false);
@@ -382,7 +386,7 @@ function AppContent({
         }
     };
 
-    const handleEnterpriseSetupComplete = (workspaceData: any) => {
+    const handleEnterpriseSetupComplete = (workspaceData: Workspace) => {
         setWorkspace(workspaceData);
         setMode("enterprise");
         setCurrentPlan("enterprise");
@@ -393,7 +397,7 @@ function AppContent({
         setMode("welcome");
     };
 
-    const handleUpgradeToTeam = (workspaceData: any) => {
+    const handleUpgradeToTeam = (workspaceData: Workspace) => {
         setWorkspace(workspaceData);
         setAccountType("team");
         setCurrentPlan("team");
@@ -436,12 +440,12 @@ function AppContent({
         }
     };
 
-    const handleManageSubscription = (subscription: any) => {
+    const handleManageSubscription = (subscription: DBSubscription) => {
         setSelectedSubscription(subscription);
         setShowManageSubscription(true);
     };
 
-    const handleRenewSubscription = (subscription: any) => {
+    const handleRenewSubscription = (subscription: DBSubscription) => {
         if (subscription.renewalUrl) {
             window.open(subscription.renewalUrl, "_blank");
             apiPost(`/api/subscriptions/${subscription.id}/track-interaction`).catch(() => {});
@@ -469,7 +473,7 @@ function AppContent({
         });
     };
 
-    const handleAddFromNotification = (subscription: any) => {
+    const handleAddFromNotification = (subscription: DetectedSubscription) => {
         if (checkDuplicate(subscriptions, subscription.name)) {
             alert(`${subscription.name} already exists in your subscriptions!`);
             return;
@@ -816,7 +820,7 @@ function AppContent({
             {showEditSubscription && selectedSubscription && (
                 <EditSubscriptionModal
                     subscription={selectedSubscription}
-                    onSave={(updates: any) =>
+                    onSave={(updates: SubscriptionUpdates) =>
                         handleEditSubscription(selectedSubscription.id, updates)
                     }
                     onClose={() => setShowEditSubscription(false)}

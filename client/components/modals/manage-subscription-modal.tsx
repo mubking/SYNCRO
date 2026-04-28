@@ -12,6 +12,7 @@ import {
   Play,
   Ban,
   Bell,
+  Gift,
 } from "lucide-react"
 import { useState } from "react"
 import NotificationPreferencesModal from "@/components/modals/notification-preferences-modal"
@@ -19,6 +20,10 @@ import { NotesEditor } from "@/components/ui/notes-editor"
 import { TagInput } from "@/components/ui/tag-input"
 import { useTags } from "@/hooks/use-tags"
 import { apiPost } from "@/lib/api"
+import {
+  getGiftCardProviderFromSubscription,
+  openAtomicWalletGiftCard,
+} from "@/lib/atomic-wallet"
 
 const CANCEL_LINKS: Record<string, string> = {
   "ChatGPT Plus": "https://platform.openai.com/account/billing/overview",
@@ -75,6 +80,9 @@ export default function ManageSubscriptionModal({
   }
 
   const cancelLink = CANCEL_LINKS[subscription.name] || subscription.renewalUrl
+  const giftCardProvider = getGiftCardProviderFromSubscription(subscription)
+  const giftCardAmount = Number(subscription.price || 0)
+  const canBuyGiftCard = Boolean(giftCardProvider && giftCardAmount > 0)
 
   const handleDelete = () => {
     onDelete()
@@ -317,6 +325,15 @@ export default function ManageSubscriptionModal({
                   </button>
                 )}
 
+              {canBuyGiftCard && (
+                <button
+                  onClick={() => openAtomicWalletGiftCard(giftCardAmount, giftCardProvider!)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#007A5C] text-white rounded-lg font-semibold hover:bg-[#007A5C]/90 transition-colors"
+                >
+                  <Gift className="w-4 h-4" />
+                  Buy Gift Card
+                </button>
+              )}
               <button
                 onClick={onEdit}
                 className={`w-full flex items-center justify-center gap-2 px-4 py-3 border-2 ${

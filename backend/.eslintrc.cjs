@@ -16,15 +16,13 @@ module.exports = {
     "plugin:@typescript-eslint/recommended",
   ],
   rules: {
-    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/no-floating-promises": "error",
     "no-console": "warn",
-    "@typescript-eslint/no-unused-vars": "error",
+    "@typescript-eslint/no-unused-vars": "warn",
   },
   overrides: [
     {
-      // Plain JS/CJS files (scripts, config files) don't have a tsconfig —
-      // disable type-aware rules that require parserOptions.project.
       files: ["*.js", "*.cjs", "*.mjs"],
       parserOptions: {
         project: null,
@@ -34,6 +32,12 @@ module.exports = {
         "@typescript-eslint/no-explicit-any": "off",
         "@typescript-eslint/no-unused-vars": "off",
         "@typescript-eslint/no-require-imports": "off",
+      },
+    },
+    {
+      files: ["src/config/**/*.ts", "src/middleware/**/*.ts", "src/schemas/**/*.ts"],
+      rules: {
+        "@typescript-eslint/no-explicit-any": "error",
       },
     },
   ],

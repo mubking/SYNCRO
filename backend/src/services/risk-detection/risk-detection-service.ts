@@ -353,25 +353,56 @@ const RISK_CALC_CONCURRENCY = parseInt(
             new_risk_level: assessment.risk_level,
           })
           .catch((err) => {
-              "Failed to dispatch subscription.risk_score_changed webhook:",
-              err,
+              logger.error(
+                  "Failed to dispatch subscription.risk_score_changed webhook:",
+                  err,
+              );
           });
-   * Recalculate risk for all active subscriptions.
-   *
-   * Each page of 100 subscriptions is processed concurrently up to
-   * RISK_CALC_CONCURRENCY (default 10) simultaneous calculations,
-   * giving ~10x throughput over the previous sequential approach.
-    const limit = pLimit(RISK_CALC_CONCURRENCY);
-      logger.info("Starting risk recalculation for all active subscriptions", {
-        concurrency: RISK_CALC_CONCURRENCY,
-        // Process the page concurrently, bounded by pLimit
-        await Promise.all(
-          subscriptions.map((subscription) =>
-            limit(async () => {
-              try {
-                const assessment = await this.computeRiskLevel(subscription.id);
-                await this.saveRiskScore(assessment, subscription.user_id);
-                result.successful++;
+}
+
+/**
+ * Recalculate risk for all active subscriptions.
+ *
+ * Each page of 100 subscriptions is processed concurrently up to
+ * RISK_CALC_CONCURRENCY (default 10) simultaneous calculations,
+ * giving ~10x throughput over the previous sequential approach.
+ */
+async recalculateAllRiskScores(): Promise<{
+  successful: number;
+  failed: number;
+  errors: Array<{ subscriptionId: string; error: string }>;
+}> {
+  const result = { successful: 0, failed: 0, errors: [] as Array<{ subscriptionId: string; error: string }> };
+  const startTime = Date.now();
+  
+  logger.info("Starting risk recalculation for all active subscriptions", {
+    concurrency: RISK_CALC_CONCURRENCY,
+  });
+
+  const limit = pLimit(RISK_CALC_CONCURRENCY);
+  
+  try {
+    // Get all active subscriptions
+    const { data: subscriptions, error } = await supabase
+      .from('subscriptions')
+      .select('id, user_id')
+      .eq('status', 'active');
+    
+    if (error) throw error;
+    
+    if (!subscriptions || subscriptions.length === 0) {
+      logger.info("No active subscriptions found for risk recalculation");
+      return result;
+    }
+
+    // Process the page concurrently, bounded by pLimit
+    await Promise.all(
+      subscriptions.map((subscription) =>
+        limit(async () => {
+          try {
+            const assessment = await this.computeRiskLevel(subscription.id);
+            await this.saveRiskScore(assessment, subscription.user_id);
+            result.successful++;
               } catch (err) {
                 result.failed++;
                 result.errors.push({

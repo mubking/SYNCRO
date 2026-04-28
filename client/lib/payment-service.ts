@@ -1,6 +1,8 @@
 import Stripe from "stripe"
 import { createClient } from "./supabase/server"
 import { getStripeInstance } from "./stripe-config"
+import { getPayPalService } from "./paypal-service"
+import { isPaymentProviderEnabled } from "./feature-flags"
 
 export interface PaymentConfig {
   provider: "stripe" | "paypal" | "mock"
@@ -11,6 +13,8 @@ export interface PaymentResult {
   success: boolean
   transactionId: string
   error?: string
+  requiresAction?: boolean
+  actionUrl?: string
 }
 
 export class PaymentService {
@@ -30,30 +34,66 @@ export class PaymentService {
     paymentMethodId: string,
     metadata: any = {}
   ): Promise<PaymentResult> {
+    // Validate provider is enabled
+    if (!isPaymentProviderEnabled(this.provider as any)) {
+      return {
+        success: false,
+        transactionId: "",
+        error: `Payment provider '${this.provider}' is not enabled. Please configure the required credentials.`,
+      }
+    }
+
     let result: PaymentResult
 
-    if (this.provider === "stripe") {
-      result = await this.processStripePayment(amount, currency, paymentMethodId)
-    } else if (this.provider === "paypal") {
-      result = await this.processPayPalPayment(amount, currency, paymentMethodId)
-    } else {
-      result = await this.processMockPayment(amount, currency)
-    }
+    try {
+      if (this.provider === "stripe") {
+        result = await this.processStripePayment(amount, currency, paymentMethodId)
+      } else if (this.provider === "paypal") {
+        result = await this.processPayPalPayment(amount, currency, paymentMethodId, metadata)
+      } else if (this.provider === "mock") {
+        result = await this.processMockPayment(amount, currency)
+      } else {
+        return {
+          success: false,
+          transactionId: "",
+          error: `Unknown payment provider: ${this.provider}`,
+        }
+      }
 
-    if (result.success) {
-      await this.savePaymentToDatabase({
-        amount,
-        currency,
-        status: "succeeded",
-        provider: this.provider,
-        transaction_id: result.transactionId,
-        metadata,
-        user_id: metadata.userId,
-        plan_name: metadata.planName,
-      })
-    }
+      if (result.success && !result.requiresAction) {
+        await this.savePaymentToDatabase({
+          amount,
+          currency,
+          status: "succeeded",
+          provider: this.provider,
+          transaction_id: result.transactionId,
+          metadata,
+          user_id: metadata.userId,
+          plan_name: metadata.planName,
+        })
+      } else if (result.requiresAction) {
+        // Save as pending for PayPal orders that need user approval
+        await this.savePaymentToDatabase({
+          amount,
+          currency,
+          status: "pending",
+          provider: this.provider,
+          transaction_id: result.transactionId,
+          metadata,
+          user_id: metadata.userId,
+          plan_name: metadata.planName,
+        })
+      }
 
-    return result
+      return result
+    } catch (error) {
+      console.error('[PaymentService] Payment processing error:', error)
+      return {
+        success: false,
+        transactionId: "",
+        error: error instanceof Error ? error.message : "Payment processing failed",
+      }
+    }
   }
 
   private async processStripePayment(
@@ -94,17 +134,91 @@ export class PaymentService {
   private async processPayPalPayment(
     amount: number,
     currency: string,
-    paymentMethodId: string
+    paymentMethodId: string,
+    metadata: any = {}
   ): Promise<PaymentResult> {
-    // TODO: Implement real PayPal integration
-    // For now, still mock but better structure
-    return {
-      success: true,
-      transactionId: `paypal_${Date.now()}`,
+    const paypalService = getPayPalService()
+
+    if (!paypalService) {
+      return {
+        success: false,
+        transactionId: "",
+        error: "PayPal is not configured. Please set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables.",
+      }
+    }
+
+    try {
+      // If paymentMethodId is an order ID (starts with order_), capture it
+      if (paymentMethodId.startsWith('order_')) {
+        const orderId = paymentMethodId.replace('order_', '')
+        const capture = await paypalService.captureOrder(orderId)
+
+        const captureId = capture.purchase_units[0]?.payments?.captures[0]?.id
+        const status = capture.purchase_units[0]?.payments?.captures[0]?.status
+
+        if (status === 'COMPLETED' && captureId) {
+          return {
+            success: true,
+            transactionId: captureId,
+          }
+        } else {
+          return {
+            success: false,
+            transactionId: orderId,
+            error: `Payment capture failed with status: ${status}`,
+          }
+        }
+      }
+
+      // Otherwise, create a new order
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      const order = await paypalService.createOrder(amount, currency, {
+        userId: metadata.userId,
+        planName: metadata.planName,
+        returnUrl: `${appUrl}/payments/paypal/success`,
+        cancelUrl: `${appUrl}/payments/paypal/cancel`,
+      })
+
+      // Find the approval URL
+      const approvalUrl = order.links.find(link => link.rel === 'approve')?.href
+
+      if (!approvalUrl) {
+        return {
+          success: false,
+          transactionId: order.id,
+          error: "PayPal approval URL not found",
+        }
+      }
+
+      // Return with requiresAction flag for client-side redirect
+      return {
+        success: true,
+        transactionId: order.id,
+        requiresAction: true,
+        actionUrl: approvalUrl,
+      }
+    } catch (error) {
+      console.error('[PaymentService] PayPal payment error:', error)
+      return {
+        success: false,
+        transactionId: "",
+        error: error instanceof Error ? error.message : "PayPal payment failed",
+      }
     }
   }
 
   private async processMockPayment(amount: number, currency: string): Promise<PaymentResult> {
+    // Mock payments only allowed in development or if explicitly enabled
+    if (!isPaymentProviderEnabled('mock')) {
+      return {
+        success: false,
+        transactionId: "",
+        error: "Mock payments are not enabled in production",
+      }
+    }
+
+    console.warn('[PaymentService] Using mock payment - not for production use')
+
     return {
       success: true,
       transactionId: `mock_${Date.now()}`,
@@ -124,12 +238,12 @@ export class PaymentService {
   }
 
   async refundPayment(transactionId: string): Promise<PaymentResult> {
-    if (this.provider === "stripe" && this.stripe) {
-      try {
+    try {
+      if (this.provider === "stripe" && this.stripe) {
         const refund = await this.stripe.refunds.create({
           payment_intent: transactionId,
         })
-        
+
         // Update database status
         const supabase = await createClient()
         await supabase
@@ -138,12 +252,59 @@ export class PaymentService {
           .eq("transaction_id", transactionId)
 
         return { success: true, transactionId: refund.id }
-      } catch (error: any) {
-        return { success: false, transactionId: "", error: error.message }
+      } else if (this.provider === "paypal") {
+        const paypalService = getPayPalService()
+
+        if (!paypalService) {
+          return {
+            success: false,
+            transactionId: "",
+            error: "PayPal is not configured",
+          }
+        }
+
+        // For PayPal, transactionId is the capture ID
+        const refund = await paypalService.refundCapture(transactionId)
+
+        // Update database status
+        const supabase = await createClient()
+        await supabase
+          .from("payments")
+          .update({ status: "refunded" })
+          .eq("transaction_id", transactionId)
+
+        return { success: true, transactionId: refund.id }
+      } else if (this.provider === "mock") {
+        // Mock refund
+        if (!isPaymentProviderEnabled('mock')) {
+          return {
+            success: false,
+            transactionId: "",
+            error: "Mock payments are not enabled",
+          }
+        }
+
+        const supabase = await createClient()
+        await supabase
+          .from("payments")
+          .update({ status: "refunded" })
+          .eq("transaction_id", transactionId)
+
+        return { success: true, transactionId: `refund_${Date.now()}` }
+      }
+
+      return {
+        success: false,
+        transactionId: "",
+        error: `Refunds not supported for provider: ${this.provider}`,
+      }
+    } catch (error) {
+      console.error('[PaymentService] Refund error:', error)
+      return {
+        success: false,
+        transactionId: "",
+        error: error instanceof Error ? error.message : "Refund failed",
       }
     }
-    
-    // Fallback for mock/paypal
-    return { success: true, transactionId: `refund_${Date.now()}` }
   }
 }

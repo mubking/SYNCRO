@@ -1,0 +1,76 @@
+name: Migration Drift Check
+
+on:
+  pull_request:
+    paths:
+      - 'backend/migrations/**'
+      - 'supabase/migrations/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/migrations/**'
+      - 'supabase/migrations/**'
+
+jobs:
+  check-migrations:
+    name: Detect migration drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration drift check
+        id: drift-check
+        run: |
+          if node scripts/check-migration-drift.js; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "✅ No migration drift detected"
+          else
+            echo "status=failed" >> $GITHUB_OUTPUT
+            echo "❌ Migration drift detected!"
+            exit 1
+          fi
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const driftComment = comments.find(c => c.body.includes('Migration Drift Check'));
+            
+            const body = `## 🔍 Migration Drift Check
+            **Result**: ${process.env.STATUS === 'success' ? '✅ No drift detected' : '❌ Drift detected!'}
+            
+            Please review the migration files in both \`backend/migrations\` and \`supabase/migrations\` folders.`;
+            
+            if (driftComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: driftComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }

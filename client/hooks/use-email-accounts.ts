@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import type { Subscription } from "@/lib/supabase/subscriptions";
+import type { Integration, IntegrationStatus } from "@/lib/integration-types";
 
 interface UseEmailAccountsProps {
   initialAccounts: any[];
@@ -19,12 +20,12 @@ export function useEmailAccounts({
   onToast,
 }: UseEmailAccountsProps) {
   const [emailAccounts, setEmailAccounts] = useState(initialAccounts);
-  const [integrations, setIntegrations] = useState([
+  const [integrations, setIntegrations] = useState<Integration[]>([
     {
       id: 1,
       name: "Gmail",
       type: "Email Integration",
-      status: "connected",
+      status: IntegrationStatus.Connected,
       lastSync: "2 minutes ago",
       accounts: initialAccounts.length,
     },
@@ -32,7 +33,7 @@ export function useEmailAccounts({
       id: 3,
       name: "Manual tools",
       type: "Self-managed",
-      status: "connected",
+      status: IntegrationStatus.Connected,
       lastSync: "2 minutes ago",
       accounts: 0,
     },
@@ -171,7 +172,10 @@ export function useEmailAccounts({
         int.id === id
           ? {
               ...int,
-              status: int.status === "connected" ? "disconnected" : "connected",
+              status:
+                int.status === IntegrationStatus.Connected
+                  ? IntegrationStatus.Disconnected
+                  : IntegrationStatus.Connected,
             }
           : int
       )

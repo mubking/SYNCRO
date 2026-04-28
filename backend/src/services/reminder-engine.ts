@@ -13,8 +13,10 @@ import {
 import { calculateBackoffDelay } from '../utils/retry';
 import { userPreferenceService } from './user-preference-service';
 import { notificationPreferenceService } from './notification-preference-service';
+import { reminderSettingsService } from './reminder-settings-service';
 import { quietHoursService } from './quiet-hours-service';
 import { delayedNotificationService } from './delayed-notification-service';
+import { analyticsService } from './analytics-service';
 
 export interface ReminderEngineOptions {
   defaultDaysBefore?: number[];
@@ -114,6 +116,121 @@ export class ReminderEngine {
     } catch (error) {
       logger.error('Error processing delayed notifications:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check for insufficient wallet balance for prepaid users
+   */
+  async checkInsufficientBalance(): Promise<void> {
+    logger.info('Checking for insufficient wallet balance');
+
+    try {
+      // Get all users with budgets
+      const { data: budgets, error } = await supabase
+        .from('monthly_budgets')
+        .select('user_id, budget_limit')
+        .is('category', null); // Overall budget
+
+      if (error) {
+        logger.error('Failed to fetch budgets:', error);
+        throw error;
+      }
+
+      if (!budgets || budgets.length === 0) {
+        logger.info('No users with budgets found');
+        return;
+      }
+
+      for (const budget of budgets) {
+        try {
+          await this.checkUserInsufficientBalance(budget.user_id, budget.budget_limit);
+        } catch (error) {
+          logger.error(`Failed to check balance for user ${budget.user_id}:`, error);
+        }
+      }
+    } catch (error) {
+      logger.error('Error checking insufficient balance:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check insufficient balance for a specific user
+   */
+  private async checkUserInsufficientBalance(userId: string, budgetLimit: number): Promise<void> {
+    // Get analytics summary to get current spend
+    const summary = await analyticsService.getSummary(userId);
+    const remainingBalance = budgetLimit - summary.budget_status.current_spend;
+
+    if (remainingBalance <= 0) {
+      // Already over budget, perhaps already alerted
+      return;
+    }
+
+    // Get active subscriptions
+    const { data: subscriptions, error } = await supabase
+      .from('subscriptions')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (error) {
+      logger.error('Failed to fetch subscriptions:', error);
+      throw error;
+    }
+
+    if (!subscriptions || subscriptions.length === 0) {
+      return;
+    }
+
+    const userProfile = await this.getUserProfile(userId);
+    if (!userProfile) {
+      logger.warn(`User profile ${userId} not found`);
+      return;
+    }
+
+    const preferences = await userPreferenceService.getPreferences(userId);
+
+    for (const sub of subscriptions) {
+      if (sub.price > remainingBalance) {
+        // Send critical alert
+        const payload: NotificationPayload = {
+          title: 'Insufficient Wallet Balance',
+          body: `Wallet balance ($${remainingBalance.toFixed(2)}) is insufficient for ${sub.name} ($${sub.price.toFixed(2)}).`,
+          subscription: sub as Subscription,
+          reminderType: 'renewal',
+          daysBefore: 0,
+          renewalDate: sub.next_billing_date || new Date().toISOString(),
+          priority: 'critical',
+        };
+
+        // Send directly without delivery records
+        const deliveryChannels = preferences.notification_channels;
+
+        // Email delivery
+        if (deliveryChannels.includes('email') && preferences.email_opt_ins.reminders) {
+          await emailService.sendReminderEmail(
+            userProfile.email,
+            payload,
+            { maxAttempts: this.maxRetryAttempts },
+          );
+        }
+
+        // Push delivery
+        if (deliveryChannels.includes('push')) {
+          const pushSubscription = await this.getPushSubscription(userId);
+          if (pushSubscription) {
+            await pushService.sendPushNotification(
+              pushSubscription,
+              payload,
+              { maxAttempts: this.maxRetryAttempts },
+            );
+          }
+        }
+
+        logger.info(`Sent insufficient balance alert for user ${userId}, subscription ${sub.name}`);
+      }
     }
   }
 
@@ -639,8 +756,9 @@ export class ReminderEngine {
     // 2. User global settings
     try {
       const userPrefs = await userPreferenceService.getPreferences(userId);
+      const reminderSettings = await reminderSettingsService.getSettings(userId);
       return {
-        reminder_days_before: userPrefs.reminder_timing ?? this.defaultDaysBefore,
+        reminder_days_before: reminderSettings.reminder_days_before,
         channels: userPrefs.notification_channels ?? ['email'],
         muted: false,
       };

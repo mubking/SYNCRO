@@ -7,6 +7,7 @@ export interface Subscription {
   category: string
   price: number
   icon: string
+  provider?: string
   renews_in: number | null
   status: string
   color: string

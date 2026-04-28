@@ -53,7 +53,7 @@ Official TypeScript/JavaScript SDK for the **SYNCRO** Subscription Management Pl
 ```bash
 npm install @syncro/sdk
 # or
-pnpm add @syncro/sdk
+npm add @syncro/sdk
 ```
 
 ---

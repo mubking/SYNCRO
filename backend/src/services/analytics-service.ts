@@ -2,7 +2,6 @@ import { supabase } from '../config/database';
 import logger from '../config/logger';
 import { AnalyticsSummary, MonthlySpend, CategorySpend, SubscriptionSpend, Budget } from '../types/analytics';
 import { Subscription } from '../types/reminder';
-import { riskNotificationService } from './risk-detection/risk-notification-service';
 
 export class AnalyticsService {
   /**

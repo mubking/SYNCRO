@@ -1,0 +1,88 @@
+---
+title: Soroban Contracts
+description: "On-chain contract addresses, function signatures, and events"
+---
+
+## Deployed Contracts
+
+| Contract | Network | Address |
+|----------|---------|---------|
+| `SubscriptionRegistry` | Testnet | `CXXX...` (set after deployment) |
+| `SubscriptionRenewal` | Testnet | `CYYY...` (set after deployment) |
+| `VirtualCard` | Testnet | `CZZZ...` (set after deployment) |
+
+## SubscriptionRegistry
+
+Stores the canonical list of subscriptions for each user.
+
+### Functions
+
+```rust
+// Register a new subscription on-chain
+fn register_subscription(env: Env, owner: Address, sub_id: u64, hash: BytesN<32>)
+
+// Verify a subscription's integrity hash
+fn verify_subscription(env: Env, sub_id: u64, hash: BytesN<32>) -> bool
+
+// Get subscription owner
+fn get_owner(env: Env, sub_id: u64) -> Address
+```
+
+## SubscriptionRenewal
+
+Authorises and executes subscription renewal payments.
+
+### Functions
+
+```rust
+// Approve a renewal for up to max_spend
+fn approve_renewal(env: Env, sub_id: u64, max_spend: i128, expires_at: u32)
+
+// Process the renewal (callable by authorised agent)
+fn renew(env: Env, sub_id: u64) -> Result<(), Error>
+
+// Cancel pending renewal
+fn cancel_approval(env: Env, sub_id: u64)
+```
+
+### Events
+
+```rust
+// Emitted on successful renewal
+subscription_renewed { sub_id: u64, amount: i128, timestamp: u64 }
+
+// Emitted on failed renewal
+renewal_failed { sub_id: u64, reason: String, timestamp: u64 }
+```
+
+## VirtualCard
+
+Non-custodial virtual card for subscription payments.
+
+### Functions
+
+```rust
+// Issue a new card with initial balance
+fn issue_card(env: Env, user: Address, amount: i128, card_type: CardType, expires_at: u64) -> u32
+
+// Process a payment from a card
+fn process_payment(env: Env, card_id: u32, amount: i128, merchant: String) -> u32
+
+// Get current card balance
+fn get_balance(env: Env, card_id: u32) -> i128
+
+// Activate / deactivate a card
+fn activate_card(env: Env, card_id: u32, caller: Address)
+fn deactivate_card(env: Env, card_id: u32, caller: Address, reason: String)
+```
+
+## Verifying Subscription Data
+
+```typescript
+import { StellarSdk } from '@stellar/stellar-sdk';
+
+const server = new StellarSdk.SorobanRpc.Server('https://soroban-testnet.stellar.org');
+
+// Read subscription from contract
+const result = await server.simulateTransaction(...);
+```

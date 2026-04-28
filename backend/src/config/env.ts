@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import logger from './logger';
 
 const envSchema = z.object({
   // Server
@@ -36,7 +37,6 @@ const envSchema = z.object({
   // Payment providers (optional)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
-  PAYSTACK_SECRET_KEY: z.string().optional(),
 
   // Google / Gmail (optional)
   GOOGLE_CLIENT_ID: z.string().optional(),
@@ -71,6 +71,12 @@ const envSchema = z.object({
   // Secret Management
   SECRET_PROVIDER_TYPE: z.enum(['local', 'aws', 'vault']).default('local'),
 
+  // Gemini LLM (optional — enables AI fallback for email parsing)
+  GEMINI_API_KEY: z.string().optional(),
+  // Soroban event indexer (optional)
+  INDEXER_POLL_INTERVAL_MS: z.string().optional(),
+  INDEXER_BATCH_SIZE: z.string().optional(),
+
   // Risk calculation concurrency (number of simultaneous risk calculations per page)
   RISK_CALC_CONCURRENCY: z.string().default('10'),
 });
@@ -83,7 +89,7 @@ function validateEnv() {
       .map((issue) => `  - ${issue.message || issue.path.join('.')}`)
       .join('\n');
 
-    console.error(`\n❌ Environment validation failed:\n${errors}\n`);
+    logger.error(`\n❌ Environment validation failed:\n${errors}\n`);
     process.exit(1);
   }
 

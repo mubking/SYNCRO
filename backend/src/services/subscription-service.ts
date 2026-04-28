@@ -34,7 +34,6 @@ export class SubscriptionService {
   async createSubscription(
     userId: string,
     input: SubscriptionCreateInput,
-    idempotencyKey?: string,
   ): Promise<SubscriptionSyncResult> {
     return await DatabaseTransaction.execute(async (client) => {
       try {
@@ -167,17 +166,10 @@ export class SubscriptionService {
         }
 
         // 3. Cancel all pending reminders for this subscription
-        const { error: reminderError } = await client
+        await client
           .from("reminder_schedules")
           .delete()
           .eq("subscription_id", subscriptionId);
-
-        if (reminderError) {
-          logger.warn("Failed to delete reminders during subscription deletion", {
-            subscriptionId,
-            error: reminderError.message,
-          });
-        }
 
         // 4. Sync to blockchain (non-fatal if it fails)
         let blockchainResult;
@@ -266,8 +258,11 @@ export class SubscriptionService {
         }
 
         // 3. Cancel all pending reminders for this subscription
-        const { error: reminderError } = await client
+        await client
           .from("reminder_schedules")
+          .delete()
+          .eq("subscription_id", subscriptionId);
+        
         let blockchainResult;
         let syncStatus: "synced" | "partial" | "failed" = "synced";
 

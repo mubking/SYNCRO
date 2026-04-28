@@ -4,7 +4,6 @@ import { riskDetectionService } from '../services/risk-detection/risk-detection-
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { adminAuth } from '../middleware/admin';
 import { validateRequest } from '../utils/validation';
-import { NotFoundError } from '../errors';
 
 const router: express.Router = express.Router();
 

@@ -1,0 +1,203 @@
+/**
+ * blockchain/indexer.ts
+ *
+ * Reliable Soroban event indexer that:
+ *  1. Polls the RPC for new ledgers on a configurable interval.
+ *  2. Detects gaps (missed blocks) by comparing the stored cursor against
+ *     the latest ledger and back-fills them in bounded batches.
+ *  3. Persists every on-chain event to `blockchain_logs` so the table is
+ *     never missing a transaction.
+ *  4. Uses exponential back-off with jitter on transient RPC failures.
+ */
+
+import logger from '../config/logger';
+import { supabase } from '../config/database';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const RPC_URL =
+  process.env.SOROBAN_RPC_URL ?? 'https://soroban-testnet.stellar.org';
+const CONTRACT_ID = process.env.SOROBAN_CONTRACT_ADDRESS ?? '';
+const POLL_INTERVAL_MS = parseInt(
+  process.env.INDEXER_POLL_INTERVAL_MS ?? '6000',
+  10,
+);
+const BATCH_SIZE = parseInt(process.env.INDEXER_BATCH_SIZE ?? '200', 10);
+const MAX_RETRIES = 5;
+const BASE_RETRY_MS = 1000;
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface RawEvent {
+  id: string;
+  type: string;
+  ledger: number;
+  ledgerClosedAt: string;
+  contractId: string;
+  txHash: string;
+  topic: string[];
+  value: unknown;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function rpcPost<T>(method: string, params: unknown): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: any = await res.json();
+      if (json.error) throw new Error(json.error.message ?? JSON.stringify(json.error));
+      return json.result as T;
+    } catch (err) {
+      lastErr = err;
+      const delay =
+        BASE_RETRY_MS * Math.pow(2, attempt) * (0.8 + Math.random() * 0.4);
+      logger.warn(`Indexer RPC retry ${attempt + 1}/${MAX_RETRIES}`, {
+        method,
+        delay,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
+}
+
+async function getLatestLedger(): Promise<number> {
+  const result = await rpcPost<{ sequence: number }>('getLatestLedger', {});
+  return result.sequence;
+}
+
+async function fetchEvents(
+  startLedger: number,
+  endLedger: number,
+): Promise<RawEvent[]> {
+  const result = await rpcPost<{ events: RawEvent[] }>('getEvents', {
+    startLedger,
+    endLedger,
+    filters: CONTRACT_ID ? [{ contractIds: [CONTRACT_ID] }] : [],
+  });
+  return result.events ?? [];
+}
+
+async function getCursor(): Promise<number> {
+  const { data } = await supabase
+    .from('event_cursor')
+    .select('last_ledger')
+    .eq('id', 1)
+    .single();
+  return data?.last_ledger ?? 0;
+}
+
+async function saveCursor(ledger: number): Promise<void> {
+  await supabase
+    .from('event_cursor')
+    .upsert({ id: 1, last_ledger: ledger, updated_at: new Date().toISOString() });
+}
+
+async function persistEvents(events: RawEvent[]): Promise<void> {
+  if (events.length === 0) return;
+
+  const rows = events.map((e) => ({
+    user_id: 'system',
+    event_type: e.type,
+    event_data: {
+      id: e.id,
+      ledger: e.ledger,
+      ledgerClosedAt: e.ledgerClosedAt,
+      contractId: e.contractId,
+      txHash: e.txHash,
+      topic: e.topic,
+      value: e.value,
+    },
+    transaction_hash: e.txHash,
+    status: 'confirmed',
+    created_at: e.ledgerClosedAt ?? new Date().toISOString(),
+  }));
+
+  // Upsert on transaction_hash to guarantee idempotency
+  const { error } = await supabase
+    .from('blockchain_logs')
+    .upsert(rows, { onConflict: 'transaction_hash', ignoreDuplicates: true });
+
+  if (error) {
+    logger.error('Indexer: failed to persist events', { error, count: rows.length });
+    throw error;
+  }
+
+  logger.info('Indexer: persisted events', { count: rows.length });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Core indexing loop ────────────────────────────────────────────────────────
+
+async function indexRange(from: number, to: number): Promise<void> {
+  let cursor = from;
+  while (cursor <= to) {
+    const batchEnd = Math.min(cursor + BATCH_SIZE - 1, to);
+    logger.info('Indexer: fetching ledger range', { from: cursor, to: batchEnd });
+
+    const events = await fetchEvents(cursor, batchEnd);
+    await persistEvents(events);
+    await saveCursor(batchEnd);
+
+    cursor = batchEnd + 1;
+  }
+}
+
+async function tick(): Promise<void> {
+  const [cursor, latest] = await Promise.all([getCursor(), getLatestLedger()]);
+
+  if (latest <= cursor) return; // nothing new
+
+  const missed = latest - cursor;
+  if (missed > BATCH_SIZE) {
+    logger.warn('Indexer: gap detected — back-filling missed blocks', {
+      from: cursor + 1,
+      to: latest,
+      missed,
+    });
+  }
+
+  await indexRange(cursor + 1, latest);
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+let running = false;
+
+export async function startIndexer(): Promise<void> {
+  if (running) return;
+  if (!CONTRACT_ID) {
+    logger.warn('Indexer: SOROBAN_CONTRACT_ADDRESS not set — indexer disabled');
+    return;
+  }
+
+  running = true;
+  logger.info('Indexer: started', { rpcUrl: RPC_URL, contractId: CONTRACT_ID });
+
+  while (running) {
+    try {
+      await tick();
+    } catch (err) {
+      logger.error('Indexer: tick failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    await sleep(POLL_INTERVAL_MS);
+  }
+}
+
+export function stopIndexer(): void {
+  running = false;
+  logger.info('Indexer: stopped');
+}

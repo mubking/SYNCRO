@@ -37,8 +37,8 @@ describe('ReminderEngine Batch Optimization', () => {
     ];
 
     const mockPreferences = [
-      { user_id: 'user1', reminder_timing: [7, 3] },
-      { user_id: 'user2', reminder_timing: [1] },
+      { user_id: 'user1', reminder_days_before: [7, 3] },
+      { user_id: 'user2', reminder_days_before: [1] },
     ];
 
     // Setup mocks
@@ -54,7 +54,7 @@ describe('ReminderEngine Batch Optimization', () => {
           }),
         };
       }
-      if (table === 'user_preferences') {
+      if (table === 'reminder_settings') {
         return {
           select: () => ({
             in: () => Promise.resolve({ data: mockPreferences, error: null }),
@@ -71,7 +71,7 @@ describe('ReminderEngine Batch Optimization', () => {
     await engine.scheduleReminders([7, 3, 1]);
 
     // Verify batch fetch of preferences
-    expect(supabase.from).toHaveBeenCalledWith('user_preferences');
+    expect(supabase.from).toHaveBeenCalledWith('reminder_settings');
     
     // Verify batch upsert
     expect(supabase.from).toHaveBeenCalledWith('reminder_schedules');

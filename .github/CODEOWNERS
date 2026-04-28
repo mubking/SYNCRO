@@ -1,0 +1,57 @@
+# SYNCRO Code Ownership and Review Requirements
+# 
+# This file defines code ownership by area and enforces required reviews on pull requests.
+# When a PR touches files in an owned area, GitHub automatically requests review from the
+# designated owners.
+#
+# Documentation: See docs/code-review-process.md for escalation and handoff procedures.
+
+# Global defaults - all files require root maintainer review
+* @Calebux
+
+# Frontend / Client Application
+client/ @Calebux
+client/app/ @Calebux
+client/components/ @Calebux
+client/hooks/ @Calebux
+client/lib/ @Calebux
+client/styles/ @Calebux
+client/e2e/ @Calebux
+
+# Backend / API Server
+backend/ @Calebux
+backend/src/ @Calebux
+backend/services/ @Calebux
+backend/routes/ @Calebux
+backend/utils/ @Calebux
+backend/tests/ @Calebux
+
+# Smart Contracts / Blockchain
+contracts/ @Calebux
+contracts/contracts/ @Calebux
+contracts/scripts/ @Calebux
+
+# Database / Infrastructure
+supabase/ @Calebux
+supabase/migrations/ @Calebux
+migrations/ @Calebux
+docs/RATE_LIMITING.md @Calebux
+docs/RENEWAL_EXECUTION.md @Calebux
+
+# SDK
+sdk/ @Calebux
+sdk/src/ @Calebux
+
+# Build & CI/CD Configuration
+.github/ @Calebux
+*.yml @Calebux
+*.yaml @Calebux
+tsconfig.json @Calebux
+jest.config.js @Calebux
+vitest.config.ts @Calebux
+pnpm-workspace.yaml @Calebux
+package.json @Calebux
+
+# Documentation (requires root maintainer)
+*.md @Calebux
+docs/ @Calebux

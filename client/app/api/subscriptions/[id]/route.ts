@@ -10,7 +10,7 @@ const updateSubscriptionSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   category: z.string().min(1).optional(),
   price: z.number().positive().optional(),
-  status: z.enum(["active", "cancelled", "expired"]).optional(),
+  status: z.enum(["active", "cancelled", "expired", "paused"]).optional(),
   renewsIn: z.number().int().min(0).optional(),
   email: z.string().email().optional(),
 })

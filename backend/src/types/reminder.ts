@@ -108,5 +108,12 @@ export interface UserPreferences {
   updated_at: string;
 }
 
+export interface ReminderSettings {
+  user_id: string;
+  reminder_days_before: number[];
+  created_at: string;
+  updated_at: string;
+}
+
 export type PartialUserPreferences = Partial<Omit<UserPreferences, 'user_id' | 'updated_at'>>;
 

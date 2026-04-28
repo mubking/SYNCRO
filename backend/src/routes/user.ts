@@ -8,9 +8,29 @@ import express, { Response } from 'express';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import logger from '../config/logger';
+import { roleService } from '../services/role-service';
 
 const router = express.Router();
 router.use(authenticate);
+
+/**
+ * GET /api/user/role
+ * Returns the current user's role from the authoritative source
+ */
+router.get('/role', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const role = await roleService.getUserRole(userId);
+
+    return res.status(200).json({
+      user_id: userId,
+      role,
+    });
+  } catch (error) {
+    logger.error('Error getting user role:', error);
+    return res.status(500).json({ success: false, error: 'Failed to get user role' });
+  }
+});
 
 /**
  * GET /api/user/export-data

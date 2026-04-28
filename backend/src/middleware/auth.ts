@@ -1,18 +1,18 @@
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../config/database';
 import logger from '../config/logger';
 import { setRequestUserId } from './requestContext';
 import * as Sentry from '@sentry/node';
+import { roleService } from '../services/role-service';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
-    email: string;
-    role: UserRole;
     email?: string;
+    role: UserRole;
     authMethod?: 'jwt' | 'api_key';
     scopes?: string[];
   };
@@ -89,6 +89,7 @@ async function authenticateWithApiKey(
     id: keyRecord.user_id,
     authMethod: 'api_key',
     scopes: Array.isArray(keyRecord.scopes) ? keyRecord.scopes : [],
+    role: await roleService.getUserRole(keyRecord.user_id),
   };
 
   setRequestUserId(keyRecord.user_id);
@@ -142,9 +143,8 @@ export async function authenticate(
     }
 
     // Attach user to request and propagate to log context
-    const rawRole = user.user_metadata?.role ?? 'member';
-    const validRoles: UserRole[] = ['owner', 'admin', 'member', 'viewer'];
-    const role: UserRole = validRoles.includes(rawRole) ? rawRole : 'member';
+    // Get role from authoritative source instead of metadata fallback
+    const role = await roleService.getUserRole(user.id);
 
     req.user = {
       id: user.id,
@@ -194,9 +194,9 @@ export async function optionalAuthenticate(
     if (token) {
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (!error && user) {
-        const rawRole = user.user_metadata?.role ?? 'member';
-        const validRoles: UserRole[] = ['owner', 'admin', 'member', 'viewer'];
-        const role: UserRole = validRoles.includes(rawRole) ? rawRole : 'member';
+        // Get role from authoritative source instead of metadata fallback
+        const role = await roleService.getUserRole(user.id);
+
         req.user = {
           id: user.id,
           email: user.email || '',

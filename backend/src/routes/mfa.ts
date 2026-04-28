@@ -1,12 +1,10 @@
 import { Router, Response } from 'express';
-import { z } from 'zod';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { recoveryCodeService } from '../services/mfa-service';
 import { TotpRateLimiter } from '../lib/totp-rate-limiter';
 import { createMfaLimiter } from '../middleware/rate-limit-factory';
-import { emailService } from '../services/email-service';
 import logger from '../config/logger';
 import { verifyRecoveryCodeSchema, mfaNotifySchema, requireTwoFaSchema } from '../schemas/mfa';
 
@@ -97,8 +95,8 @@ router.delete('/2fa/recovery-codes', async (req: AuthenticatedRequest, res: Resp
 // ---------------------------------------------------------------------------
 
 router.post('/2fa/notify', validate(mfaNotifySchema), async (req: AuthenticatedRequest, res: Response) => {
-  const { event } = req.body;
-
+  const userId = req.user!.id;
+  
   totpRateLimiter.reset(userId);
   res.json({ success: true });
 });

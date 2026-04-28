@@ -63,9 +63,9 @@ All required PNG icons generated from `icon.svg`:
 
 Added to `package.json`:
 ```bash
-pnpm run generate-pwa-icons      # Generate all icon sizes
-pnpm run generate-pwa-screenshot # Generate placeholder screenshot
-pnpm run generate-pwa-assets     # Generate all assets
+npm run generate-pwa-icons      # Generate all icon sizes
+npm run generate-pwa-screenshot # Generate placeholder screenshot
+npm run generate-pwa-assets     # Generate all assets
 ```
 
 ## Testing Checklist

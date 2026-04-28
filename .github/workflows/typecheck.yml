@@ -14,8 +14,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -30,14 +30,11 @@ jobs:
       run:
         working-directory: client
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
-          cache: "pnpm"
-          cache-dependency-path: client/pnpm-lock.yaml
-      - run: pnpm install --no-frozen-lockfile
+          cache: "npm"
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
       - run: npx tsc --noEmit

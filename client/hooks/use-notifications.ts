@@ -8,15 +8,7 @@ import {
 } from "@/lib/subscription-utils";
 import type { Subscription } from "@/lib/supabase/subscriptions";
 import type { BudgetAlert } from "@/lib/budget-utils";
-
-interface Notification {
-  id: string | number;
-  title: string;
-  description: string;
-  type: string;
-  read: boolean;
-  [key: string]: any;
-}
+import type { Notification } from "@/lib/notification-types";
 
 interface UseNotificationsProps {
   subscriptions: Subscription[];
@@ -46,6 +38,7 @@ export function useNotifications({
         count: 2,
         totalCost: 40,
         potentialSavings: 20,
+        subscriptions: [{ id: 1, name: "ChatGPT Plus" }],
       },
     },
     {
@@ -151,7 +144,7 @@ export function useNotifications({
     });
   }, [priceChanges, renewalReminders, budgetAlert, consolidationSuggestions]);
 
-  const handleMarkNotificationRead = useCallback((id: number) => {
+  const handleMarkNotificationRead = useCallback((id: Notification["id"]) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );

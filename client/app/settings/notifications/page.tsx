@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import QuietHoursSettings from "@/components/settings/QuietHoursSettings"
+import ReminderSettings from "@/components/settings/ReminderSettings"
 import Link from "next/link"
 
 export default async function NotificationSettingsPage() {
@@ -57,6 +58,11 @@ export default async function NotificationSettingsPage() {
         >
           Privacy
         </Link>
+      </div>
+
+      {/* Reminder Settings */}
+      <div className="mb-8">
+        <ReminderSettings />
       </div>
 
       {/* Quiet Hours Settings */}
