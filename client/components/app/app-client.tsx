@@ -677,6 +677,7 @@ function AppContent({
                                 unusedSubscriptions={unusedSubscriptions}
                                 onPause={(sub) => handlePauseSubscription(sub.id)}
                                 onResume={(sub) => handleResumeSubscription(sub.id)}
+                                pausedCount={pausedSubscriptions.length}
                             />
                         )}
                         {activeView === "analytics" && (

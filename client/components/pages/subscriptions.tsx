@@ -68,6 +68,7 @@ interface SubscriptionsPageProps {
   onImportComplete?: () => void;
   onPause?: (subscription: Subscription) => void;
   onResume?: (subscription: Subscription) => void;
+  pausedCount?: number;
 }
 
 export default function SubscriptionsPage({
@@ -88,6 +89,7 @@ export default function SubscriptionsPage({
   onResume,
   onCancelTrial,
   onConvertTrial,
+  pausedCount = 0,
 }: SubscriptionsPageProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -99,6 +101,7 @@ export default function SubscriptionsPage({
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [showUnusedOnly, setShowUnusedOnly] = useState(false);
+  const [showPausedOnly, setShowPausedOnly] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportingPDF, setExportingPDF] = useState(false);
   const [showCSVImport, setShowCSVImport] = useState(false);
@@ -243,6 +246,16 @@ export default function SubscriptionsPage({
         matchesEmail &&
         matchesPrice &&
         isUnused
+      );
+    }
+
+    if (showPausedOnly) {
+      return (
+        matchesSearch &&
+        matchesCategory &&
+        matchesEmail &&
+        matchesPrice &&
+        sub.status === "paused"
       );
     }
 
@@ -430,6 +443,7 @@ export default function SubscriptionsPage({
             onClick={() => {
               setShowDuplicatesOnly(!showDuplicatesOnly);
               setShowUnusedOnly(false);
+              setShowPausedOnly(false);
             }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               showDuplicatesOnly
@@ -448,6 +462,7 @@ export default function SubscriptionsPage({
             onClick={() => {
               setShowUnusedOnly(!showUnusedOnly);
               setShowDuplicatesOnly(false);
+              setShowPausedOnly(false);
             }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               showUnusedOnly
@@ -459,6 +474,25 @@ export default function SubscriptionsPage({
           >
             <Clock className="w-4 h-4" />
             Potentially Wasted ({unusedSubscriptions.length})
+          </button>
+        )}
+        {pausedCount > 0 && (
+          <button
+            onClick={() => {
+              setShowPausedOnly(!showPausedOnly);
+              setShowDuplicatesOnly(false);
+              setShowUnusedOnly(false);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showPausedOnly
+                ? "bg-[#FFD166] text-[#1E2A35]"
+                : darkMode
+                ? "bg-[#2D3748] text-gray-400 hover:text-white"
+                : "bg-gray-100 text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <PauseCircle className="w-4 h-4" />
+            Paused ({pausedCount})
           </button>
         )}
         <button
