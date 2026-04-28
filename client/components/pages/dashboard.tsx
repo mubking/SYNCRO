@@ -4,6 +4,7 @@ import { ArrowRight, Mail, Sparkles, Package } from "lucide-react"
 import { useState } from "react"
 import { TrialSection } from "./trial-section"
 import { formatCurrency, convertCurrency, type Currency } from "@/lib/currency-utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { AnalyticsSummary } from "@/lib/api/analytics"
 import type {
   DashboardSubscription,
@@ -40,6 +41,7 @@ interface DashboardPageProps {
   displayCurrency?: Currency
   exchangeRates?: Record<string, number>
   ratesStale?: boolean
+  isLoading?: boolean
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -60,6 +62,7 @@ export default function DashboardPage({
   displayCurrency,
   exchangeRates,
   ratesStale,
+  isLoading = false,
 }: DashboardPageProps) {
   const dc = displayCurrency ?? "USD"
   const rates = exchangeRates ?? {}
@@ -424,20 +427,24 @@ function SubscriptionSection({
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {subscriptions.map((sub) => (
-          <SubscriptionCard
-            key={sub.id}
-            sub={sub}
-            isHovered={hoveredCard === sub.id}
-            onHover={onHover}
-            onRenew={onRenew}
-            onManage={onManage}
-            darkMode={darkMode}
-            rates={rates}
-            dc={dc}
-            convertPrice={convertPrice}
-          />
-        ))}
+        {subscriptions.length === 0 && isLoading
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <SubscriptionCardSkeleton key={i} darkMode={darkMode} />
+            ))
+          : subscriptions.map((sub) => (
+              <SubscriptionCard
+                key={sub.id}
+                sub={sub}
+                isHovered={hoveredCard === sub.id}
+                onHover={onHover}
+                onRenew={onRenew}
+                onManage={onManage}
+                darkMode={darkMode}
+                rates={rates}
+                dc={dc}
+                convertPrice={convertPrice}
+              />
+            ))}
       </div>
     </div>
   )
@@ -646,6 +653,63 @@ function SubscriptionCard({
         >
           {isExpiring ? "Renew now" : "Manage subscription"}
         </button>
+      </div>
+    </div>
+  )
+}
+
+interface SubscriptionCardSkeletonProps {
+  darkMode?: boolean
+}
+
+function SubscriptionCardSkeleton({ darkMode }: SubscriptionCardSkeletonProps) {
+  return (
+    <div
+      className={`${
+        darkMode ? "bg-[#2D3748] border-[#374151]" : "bg-white border-gray-200"
+      } border rounded-xl p-5 relative group transition-all duration-200 flex flex-col`}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <Skeleton className="w-12 h-12 rounded-lg" />
+          <div>
+            <Skeleton className="h-5 w-24 mb-1" />
+            <Skeleton className="h-3 w-16 mb-1" />
+            <div className="flex items-center gap-1 mt-1">
+              <Skeleton className="w-3 h-3 rounded" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </div>
+        </div>
+        <div className="text-right flex-shrink-0">
+          <Skeleton className="h-5 w-12 mb-1" />
+          <Skeleton className="h-3 w-8" />
+        </div>
+      </div>
+
+      {/* Info rows */}
+      <div className="flex-1 space-y-3 mb-3">
+        <div className={`p-2 ${darkMode ? "bg-[#1E2A35]" : "bg-gray-50"} rounded-lg`}>
+          <Skeleton className="h-3 w-20 mb-1" />
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+        </div>
+      </div>
+
+      {/* Renewal progress + action */}
+      <div className="mt-auto">
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+          <Skeleton className="w-full rounded-full h-1" />
+        </div>
+
+        <Skeleton className="w-full h-8 rounded-lg" />
       </div>
     </div>
   )

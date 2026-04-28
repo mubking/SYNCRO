@@ -659,6 +659,7 @@ function AppContent({
                                 displayCurrency={currency}
                                 exchangeRates={exchangeRates}
                                 ratesStale={ratesStale}
+                                isLoading={loading}
                             />
                         )}
                         {activeView === "subscriptions" && (
