@@ -126,6 +126,14 @@ export interface MergeSubscriptionsResponse {
   merged: Subscription;
 }
 
+export interface ConsolidationSuggestion {
+  id: string;
+  category: string;
+  services: string[];
+  suggestedBundle: string;
+  savings: string;
+}
+
 // MFA / Two Factor Authentication Types
 export interface MFAFactor {
   id: string;
