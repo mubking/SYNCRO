@@ -14,6 +14,8 @@
  *   if (estimate.congestion === 'high') { …warn user… }
  */
 
+import { RpcClient } from '../../shared/src/rpc-client';
+
 export type CongestionLevel = "low" | "medium" | "high" | "severe";
 
 export interface FeeStats {
@@ -99,6 +101,17 @@ class GasPredictorService {
   private cache: { stats: FeeStats; fetchedAt: number } | null = null;
   private readonly CACHE_TTL_MS = 15_000; // 15 seconds
   private thresholdXlm = 0.5; // default alert threshold
+  private rpcClient: RpcClient;
+
+  constructor() {
+    this.rpcClient = new RpcClient({
+      maxRetries: 3,
+      baseRetryDelayMs: 500,
+      timeoutMs: 10000,
+      circuitBreakerThreshold: 3,
+      circuitBreakerResetTimeoutMs: 15000,
+    });
+  }
 
   /** Set the alert threshold in XLM. */
   setThreshold(xlm: number): void {
@@ -130,7 +143,7 @@ class GasPredictorService {
 
     const rpcUrl = this.getRpcUrl();
 
-    const response = await fetch(rpcUrl, {
+    const response = await this.rpcClient.fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

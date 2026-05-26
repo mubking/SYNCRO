@@ -4,6 +4,7 @@ import { reorgHandler } from './reorg-handler';
 import { generateCycleId } from '../utils/cycle-id';
 import { renewalCooldownService } from './renewal-cooldown-service';
 import { calculateBackoffDelay } from '../utils/retry';
+import { RpcClient } from '../../../shared/src/rpc-client';
 
 import { 
   ContractEvent, 
@@ -61,10 +62,17 @@ export class EventListener {
   private _disabledReason?: string;
   private _retryCount: number = 0;
   private _nextRetryAt: Date | null = null;
+  private activeRequestController: AbortController | null = null;
+  private rpcClient: RpcClient;
 
   constructor() {
     this.contractId = process.env.SOROBAN_CONTRACT_ADDRESS || '';
     this.rpcUrl = process.env.STELLAR_NETWORK_URL || 'https://soroban-testnet.stellar.org';
+    this.rpcClient = new RpcClient({
+      timeoutMs: 15000,
+      maxRetries: 3,
+      circuitBreakerThreshold: 5,
+    });
 
     if (!this.contractId) {
       this._status = 'disabled';
@@ -224,7 +232,7 @@ export class EventListener {
   private async fetchEvents(fromLedger: number): Promise<ContractEvent[]> {
     const requestController = this.beginRequest();
     try {
-      const response = await fetch(this.rpcUrl, {
+      const response = await this.rpcClient.fetch(this.rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -546,7 +554,7 @@ export class EventListener {
   private async getCurrentLedger(): Promise<number> {
     const requestController = this.beginRequest();
     try {
-      const response = await fetch(this.rpcUrl, {
+      const response = await this.rpcClient.fetch(this.rpcUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

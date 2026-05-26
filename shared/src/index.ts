@@ -25,3 +25,6 @@ export * from './analytics';
 
 // Common utilities
 export * from './common';
+
+// RPC Client
+export * from './rpc-client';
