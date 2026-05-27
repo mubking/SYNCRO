@@ -64,6 +64,7 @@ const envSchema = z.object({
 
   // Telegram (optional)
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
   // Sentry (optional)
   SENTRY_DSN: z.string().optional(),
