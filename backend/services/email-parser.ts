@@ -1,4 +1,5 @@
 import { llmParser } from '../src/services/llm-parser';
+import { normalizeMerchant } from '../utils/merchant-normalizer';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,10 @@ export function parseSubscriptionEmail({
 
   const { amount, currency } = extractAmount(normalized)
   const interval = detectInterval(normalized)
-  const name = extractSenderName(from)
+  // Use normalized merchant name for consistency, fallback to raw sender extraction
+  const rawName = extractSenderName(from)
+  const normalizedName = normalizeMerchantName(from)
+  const name = normalizedName ?? rawName
 
   if (!signals.length && !strongSignal) return null
   if (!amount && !strongSignal && !interval) return null
@@ -113,6 +117,8 @@ export function parseSubscriptionEmail({
   if (strongSignal) confidence += 0.2
   if (amount) confidence += 0.2
   if (interval) confidence += 0.1
+  // Boost confidence when we have normalized merchant name
+  if (normalizedName && rawName !== normalizedName) confidence += 0.15
   confidence = Math.min(confidence, 0.95)
 
   return { name, amount, currency, interval, signals, confidence }
@@ -142,6 +148,12 @@ function extractSenderName(from?: string | null): string | null {
   if (emailMatch) return emailMatch[1]
 
   return trimmed
+}
+
+function normalizeMerchantName(from?: string | null): string | null {
+  if (!from) return null;
+  const match = normalizeMerchant(from);
+  return match?.canonicalName ?? null;
 }
 
 function extractAmount(text: string): ExtractedAmount {
@@ -192,4 +204,10 @@ function detectInterval(text: string): string | null {
     if (matcher.pattern.test(text)) return matcher.value
   }
   return null
+}
+
+export function extractMerchantForTest(from?: string | null): string | null {
+  const rawName = extractSenderName(from);
+  const normalizedName = normalizeMerchantName(from);
+  return normalizedName ?? rawName;
 }

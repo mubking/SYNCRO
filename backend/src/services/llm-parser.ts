@@ -1,4 +1,5 @@
 import logger from '../config/logger';
+import { getMerchantCanonicalForm } from '../../utils/merchant-normalizer';
 
 export interface LLMParsedSubscription {
   name: string | null;
@@ -69,12 +70,19 @@ export class LLMParser {
       const raw: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
       const parsed = JSON.parse(raw.trim()) as LLMParsedSubscription;
 
+      // Normalize the merchant name through known patterns
+      const normalizedName = parsed.name ? getMerchantCanonicalForm(parsed.name) : null;
+
       logger.info('LLMParser: parsed subscription', {
         name: parsed.name,
+        normalizedName,
         confidence: parsed.confidence,
       });
 
-      return parsed;
+      return {
+        ...parsed,
+        name: normalizedName,
+      };
     } catch (err) {
       logger.error('LLMParser: failed to parse Gemini response', { err });
       return null;
