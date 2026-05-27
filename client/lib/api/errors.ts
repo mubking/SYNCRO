@@ -11,6 +11,8 @@ import { ZodError } from 'zod'
  * Custom API Error Class
  */
 export class ApiException extends Error {
+  public headers?: Record<string, string>
+
   constructor(
     public code: ErrorCode,
     public message: string,
@@ -119,7 +121,10 @@ export function createErrorResponse(
           requestId,
         },
       },
-      { status: error.statusCode }
+      {
+        status: error.statusCode,
+        headers: error.headers,
+      },
     )
   }
 

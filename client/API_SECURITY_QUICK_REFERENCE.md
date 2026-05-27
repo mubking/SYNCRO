@@ -232,12 +232,14 @@ if (user.id !== resource.user_id) throw ApiErrors.forbidden()
 
 ## 🎯 Rate Limiting Guidelines
 
-| Operation Type | Rate Limiter | Limit |
-|----------------|--------------|-------|
-| Read operations (GET) | `RateLimiters.standard` | 100/min |
-| Write operations (POST, PATCH) | `RateLimiters.standard` | 100/min |
-| Bulk operations (CSV import) | `RateLimiters.strict` | 5/hour |
-| Financial operations (payments, refunds) | `RateLimiters.strict` | 5/hour |
+| Operation Type | Rate Limiter | Default limit (env override) |
+|----------------|--------------|------------------------------|
+| Read operations (GET) | `RateLimiters.standard` | 100 / 15 min |
+| Tag mutations (POST/DELETE tags, assign/remove) | `RateLimiters.tagMutation` | 30 / 15 min (`RATE_LIMIT_TAG_MUTATION_*`) |
+| CSV import (`POST /api/subscriptions/import`) | `RateLimiters.import` | 5 / hour (`RATE_LIMIT_IMPORT_*`) |
+| Payments & refunds | `RateLimiters.payment` | 10 / hour (`RATE_LIMIT_PAYMENT_*`) |
+
+Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `Retry-After` on `429`.
 | Public endpoints (health checks) | None | - |
 
 ---

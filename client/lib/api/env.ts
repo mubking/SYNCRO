@@ -22,6 +22,12 @@ const envSchema = z.object({
   // Rate Limiting
   RATE_LIMIT_ENABLED: z.string().transform((val) => val === 'true').default('true'),
   RATE_LIMIT_REDIS_URL: z.string().url('Invalid Redis URL').optional(),
+  RATE_LIMIT_IMPORT_MAX: z.string().optional(),
+  RATE_LIMIT_IMPORT_WINDOW_MINUTES: z.string().optional(),
+  RATE_LIMIT_PAYMENT_MAX: z.string().optional(),
+  RATE_LIMIT_PAYMENT_WINDOW_MINUTES: z.string().optional(),
+  RATE_LIMIT_TAG_MUTATION_MAX: z.string().optional(),
+  RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES: z.string().optional(),
 
   // External Services
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -67,6 +73,13 @@ export function getEnv(): Env {
       API_SECRET_KEY: process.env.API_SECRET_KEY,
       RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED,
       RATE_LIMIT_REDIS_URL: process.env.RATE_LIMIT_REDIS_URL,
+      RATE_LIMIT_IMPORT_MAX: process.env.RATE_LIMIT_IMPORT_MAX,
+      RATE_LIMIT_IMPORT_WINDOW_MINUTES: process.env.RATE_LIMIT_IMPORT_WINDOW_MINUTES,
+      RATE_LIMIT_PAYMENT_MAX: process.env.RATE_LIMIT_PAYMENT_MAX,
+      RATE_LIMIT_PAYMENT_WINDOW_MINUTES: process.env.RATE_LIMIT_PAYMENT_WINDOW_MINUTES,
+      RATE_LIMIT_TAG_MUTATION_MAX: process.env.RATE_LIMIT_TAG_MUTATION_MAX,
+      RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES:
+        process.env.RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES,
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,

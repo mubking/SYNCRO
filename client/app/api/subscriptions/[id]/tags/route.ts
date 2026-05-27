@@ -54,6 +54,6 @@ export async function POST(
 
       return createSuccessResponse({ assigned: true }, HttpStatus.OK, context.requestId)
     },
-    { requireAuth: true, rateLimit: RateLimiters.standard },
+    { requireAuth: true, rateLimit: RateLimiters.tagMutation },
   )(request)
 }

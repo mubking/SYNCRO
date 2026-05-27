@@ -31,5 +31,5 @@ export const POST = createApiRoute(
 
     return createSuccessResponse({ tag }, HttpStatus.CREATED, context.requestId)
   },
-  { requireAuth: true, rateLimit: RateLimiters.standard },
+  { requireAuth: true, rateLimit: RateLimiters.tagMutation },
 )

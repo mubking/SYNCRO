@@ -68,6 +68,6 @@ export const POST = createApiRoute(
   },
   {
     requireAuth: true,
-    rateLimit: RateLimiters.strict,
+    rateLimit: RateLimiters.payment,
   },
 );

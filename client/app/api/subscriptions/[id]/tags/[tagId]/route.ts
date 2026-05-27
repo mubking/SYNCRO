@@ -34,6 +34,6 @@ export async function DELETE(
 
       return createSuccessResponse({ removed: true }, HttpStatus.OK, context.requestId)
     },
-    { requireAuth: true, rateLimit: RateLimiters.standard },
+    { requireAuth: true, rateLimit: RateLimiters.tagMutation },
   )(request)
 }

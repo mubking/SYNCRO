@@ -142,21 +142,30 @@ throw ApiErrors.validationError("Invalid email", "email")
 
 ### 4. Rate Limiting
 
-- **Predefined limiters**: `strict`, `standard`, `generous`, `auth`
-- **Custom limiters**: Create your own with `createRateLimiter`
-- **User-based limiting**: Limit per user instead of IP
+- **Route policies**: `import`, `payment`, `tagMutation` (env-configurable)
+- **General limiters**: `strict`, `standard`, `generous`, `auth`
+- **Response headers**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After` (429)
 
 ```typescript
-import { RateLimiters, createRateLimiter } from "@/lib/api"
+import { RateLimiters } from "@/lib/api"
 
-// Use predefined
-rateLimit: RateLimiters.strict
+// High-risk mutations
+rateLimit: RateLimiters.payment
+rateLimit: RateLimiters.tagMutation
+rateLimit: RateLimiters.import
+```
 
-// Create custom
-const customLimiter = createRateLimiter({
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 10,
-})
+Environment variables (defaults in parentheses):
+
+| Variable | Default |
+|----------|---------|
+| `RATE_LIMIT_ENABLED` | `true` |
+| `RATE_LIMIT_IMPORT_MAX` | `5` |
+| `RATE_LIMIT_IMPORT_WINDOW_MINUTES` | `60` |
+| `RATE_LIMIT_PAYMENT_MAX` | `10` |
+| `RATE_LIMIT_PAYMENT_WINDOW_MINUTES` | `60` |
+| `RATE_LIMIT_TAG_MUTATION_MAX` | `30` |
+| `RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES` | `15` |
 ```
 
 ### 5. Environment Management

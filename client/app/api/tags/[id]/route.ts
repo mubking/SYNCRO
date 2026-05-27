@@ -16,6 +16,6 @@ export async function DELETE(
       await deleteTag(id, user.id)
       return createSuccessResponse({ deleted: true }, HttpStatus.OK, context.requestId)
     },
-    { requireAuth: true, rateLimit: RateLimiters.standard },
+    { requireAuth: true, rateLimit: RateLimiters.tagMutation },
   )(request)
 }

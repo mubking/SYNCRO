@@ -30,6 +30,7 @@ import { requireAuth, requireRole, createRequestContext, type UserRole } from '.
 import { type RequestContext, type ApiResponse } from './types'
 import { isMaintenanceMode } from './env'
 import { ApiErrors } from './errors'
+import { applyRateLimitHeaders, type RateLimitHeaders } from './rate-limit'
 
 type RouteHandler = (
   request: NextRequest,
@@ -40,7 +41,7 @@ type RouteHandler = (
 type RouteOptions = {
   requireAuth?: boolean
   requireRole?: UserRole[]
-  rateLimit?: (request: NextRequest) => void
+  rateLimit?: (request: NextRequest) => RateLimitHeaders
   skipMaintenanceCheck?: boolean
 }
 
@@ -53,8 +54,9 @@ export function createApiRoute(
       throw ApiErrors.serviceUnavailable('Service is currently under maintenance')
     }
 
+    let rateLimitHeaders: RateLimitHeaders = {}
     if (options.rateLimit) {
-      options.rateLimit(request)
+      rateLimitHeaders = options.rateLimit(request)
     }
 
     const context = createRequestContext(request)
@@ -70,7 +72,17 @@ export function createApiRoute(
       }
     }
 
-    return handler(request, context, user) as unknown as NextResponse<ApiResponse>
+    const response = (await handler(
+      request,
+      context,
+      user,
+    )) as unknown as NextResponse<ApiResponse>
+
+    if (Object.keys(rateLimitHeaders).length > 0) {
+      return applyRateLimitHeaders(response, rateLimitHeaders) as NextResponse<ApiResponse>
+    }
+
+    return response
   }, crypto.randomUUID())
 }
 
