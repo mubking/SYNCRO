@@ -24,7 +24,9 @@
     "audit:rls": "node ../scripts/check-rls-compliance.js",
     "audit:rls:local": "node ../scripts/run-rls-audit-local.js",
     "test:rls-audit": "node ../scripts/test-rls-audit.js",
-    "check:migrations": "node ../scripts/check-migration-drift.js"
+    "check:migrations": "node ../scripts/check-migration-drift.js",
+    "db:verify-rollback": "node ../scripts/verify-rollback-safety.js",
+    "db:verify-rollback:group": "node ../scripts/verify-rollback-safety.js --group"
   },
   "dependencies": {
     "@sentry/node": "^10.50.0",
