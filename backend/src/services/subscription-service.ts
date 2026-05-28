@@ -7,6 +7,7 @@ import { referralService } from "./referral-service";
 import logger from "../config/logger";
 import { DatabaseTransaction } from "../utils/transaction";
 import SERVICE_CATEGORIES from "../../services/service-categories";
+import { validateCursor, encodeCursor } from "../utils/pagination";
 import type {
   Subscription,
   SubscriptionCreateInput,
@@ -592,6 +593,8 @@ export class SubscriptionService {
   ): Promise<ListSubscriptionsResult> {
     const limit = Math.min(options.limit ?? 20, 100);
 
+    const validatedCursor = validateCursor(options.cursor);
+
     let query = supabase
       .from("subscriptions")
       .select("*", { count: "exact" })
@@ -607,23 +610,13 @@ export class SubscriptionService {
       query = query.eq("category", options.category);
     }
 
-    if (options.cursor) {
-      try {
-        const decoded = JSON.parse(
-          Buffer.from(options.cursor, "base64").toString("utf-8"),
-        );
-        if (!decoded.created_at) {
-          throw new Error("Invalid cursor: missing created_at");
-        }
-        query = query.lt("created_at", decoded.created_at);
-      } catch {
-        throw new Error("Invalid pagination cursor");
-      }
+    if (validatedCursor) {
+      query = query.lt("created_at", validatedCursor.createdAt);
     }
 
     const { data: rows, error, count } = await query;
 
-    if (error) {
+if (error) {
       throw new Error(`Failed to fetch subscriptions: ${error.message}`);
     }
 
@@ -633,11 +626,7 @@ export class SubscriptionService {
     // Build next cursor from the last item in the page
     const nextCursor =
       hasMore && subscriptions.length > 0
-        ? Buffer.from(
-          JSON.stringify({
-            created_at: subscriptions[subscriptions.length - 1].created_at,
-          }),
-        ).toString("base64")
+        ? encodeCursor({ createdAt: subscriptions[subscriptions.length - 1].created_at })
         : null;
 
     return {

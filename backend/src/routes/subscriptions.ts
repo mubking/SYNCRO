@@ -11,6 +11,7 @@ import { SUPPORTED_CURRENCIES } from '../constants/currencies';
 import logger from '../config/logger';
 import { BadRequestError } from '../errors';
 import { validateRequest } from '../utils/validation';
+import { cursorPaginationSchema } from '../schemas/common';
 
 const router = Router();
 
@@ -109,30 +110,36 @@ router.use(authenticate);
  * List user's subscriptions
  */
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
-  const { status, category, limit, cursor } = req.query;
-  
-  const limitNum = limit ? parseInt(limit as string, 10) : 20;
-  if (isNaN(limitNum) || limitNum < 1 || limitNum > 100) {
-    throw new BadRequestError('Limit must be a number between 1 and 100');
+  try {
+    const { status, category, cursor } = req.query;
+    const pagination = validateRequest(cursorPaginationSchema, {
+      limit: req.query.limit,
+      cursor: req.query.cursor,
+    });
+
+    const result = await subscriptionService.listSubscriptions(req.user!.id, {
+      status: status as any,
+      category: category as string,
+      limit: pagination.limit,
+      cursor: pagination.cursor,
+    });
+
+    res.json({
+      success: true,
+      data: result.subscriptions,
+      pagination: {
+        total: result.total,
+        limit: pagination.limit,
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor ?? null,
+      },
+    });
+  } catch (error: any) {
+    if (error.name === 'PaginationError') {
+      throw new BadRequestError(error.message);
+    }
+    throw error;
   }
-
-  const result = await subscriptionService.listSubscriptions(req.user!.id, {
-    status: status as any,
-    category: category as string,
-    limit: limitNum,
-    cursor: cursor as string,
-  });
-
-  res.json({
-    success: true,
-    data: result.subscriptions,
-    pagination: {
-      total: result.total,
-      limit: limitNum,
-      hasMore: result.hasMore,
-      nextCursor: result.nextCursor ?? null,
-    },
-  });
 });
 
 /**

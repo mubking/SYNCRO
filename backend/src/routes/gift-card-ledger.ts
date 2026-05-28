@@ -4,6 +4,7 @@ import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { giftCardLedgerService } from '../services/gift-card-ledger-service';
 import { validateRequest } from '../utils/validation';
 import { BadRequestError } from '../errors';
+import { validateLimit } from '../utils/pagination';
 
 const router = Router();
 router.use(authenticate);
@@ -27,9 +28,16 @@ router.get('/balance', async (req: AuthenticatedRequest, res: Response) => {
 
 /** GET /api/gift-card-ledger/history */
 router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-  const history = await giftCardLedgerService.getHistory(req.user!.id, limit);
-  res.json({ success: true, data: history });
+  try {
+    const limit = validateLimit(req.query.limit, 100, 50);
+    const history = await giftCardLedgerService.getHistory(req.user!.id, limit);
+    res.json({ success: true, data: history });
+  } catch (error: any) {
+    if (error.name === 'PaginationError') {
+      throw new BadRequestError(error.message);
+    }
+    throw error;
+  }
 });
 
 /** POST /api/gift-card-ledger/top-up */
