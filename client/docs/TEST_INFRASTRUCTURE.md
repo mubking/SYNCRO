@@ -109,9 +109,49 @@ Test utilities are located in `lib/test-utils/`:
 - `flaky-reporter.ts`: Custom Playwright reporter for flaky test detection
 - `fixtures.ts`: E2E test fixtures for authentication and database state
 
+## Bundle Size Budget Enforcement
+
+Bundle size budgets are defined in `client/bundle-size.json` and enforced in CI via the `Bundle Size Check` workflow (`.github/workflows/bundle-size.yml`).
+
+### Budget Configuration
+
+The `bundle-size.json` config defines:
+- **total**: Maximum total JS size across all client chunks (KB)
+- **shared**: Maximum size for shared/framework chunks (KB)
+- **perRoute**: Per-route JS budgets (KB) — each route's total JS (page + shared) must stay under this
+- **perChunk**: Maximum size for any individual JS chunk (KB)
+
+### Checking Locally
+
+```bash
+# Build with analyzer
+ANALYZE=true npm run build
+
+# Run the check script
+node scripts/check-bundle-size.js
+
+# JSON output (for CI)
+node scripts/check-bundle-size.js --json
+```
+
+### CI Behavior
+
+- On every PR to `main`/`develop`, the workflow builds with `ANALYZE=true` and checks budgets
+- If any budget is exceeded, the check fails and a comment is posted on the PR with details
+- Warnings are posted when a route approaches 90% of its budget
+- Exceptions require team review in the PR
+
+### Updating Budgets
+
+When intentionally adding size to the bundle (e.g., a new feature with necessary dependencies):
+
+1. Run `node scripts/check-bundle-size.js --json` before and after
+2. Update `bundle-size.json` with the new values in a separate commit
+3. Mention the change in the PR description for reviewer awareness
+
 ## Next Steps
 
-1. Install dependencies: `pnpm install`
-2. Run tests: `pnpm test`
+1. Install dependencies: `npm install`
+2. Run tests: `npm test`
 3. Configure Codecov token in GitHub secrets
 4. Add coverage badge to README

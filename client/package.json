@@ -17,6 +17,7 @@
     "generate-pwa-icons": "node scripts/generate-pwa-icons.js",
     "generate-pwa-screenshot": "node scripts/generate-pwa-screenshot.js",
     "generate-pwa-assets": "npm run generate-pwa-icons && npm run generate-pwa-screenshot",
+    "check-bundle-size": "node scripts/check-bundle-size.js",
     "e2e": "npx playwright test",
     "e2e:headed": "npx playwright test --headed",
     "e2e:report": "npx playwright show-report",
@@ -86,6 +87,7 @@
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^5.0.2",
+    "@next/bundle-analyzer": "^15.5.15",
     "@playwright/test": "^1.59.1",
     "@storybook/addon-a11y": "^10.3.3",
     "@storybook/addon-docs": "^10.3.3",

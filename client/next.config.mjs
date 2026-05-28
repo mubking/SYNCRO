@@ -41,7 +41,7 @@ const nextConfig = {
   },
 }
 
-export default withSentryConfig(
+let config = withSentryConfig(
   nextConfig,
   {
     silent: true,
@@ -57,3 +57,17 @@ export default withSentryConfig(
     automaticVercelMonitors: true,
   }
 );
+
+if (process.env.ANALYZE === 'true') {
+  try {
+    const withBundleAnalyzer = (await import('@next/bundle-analyzer')).default({
+      enabled: true,
+      openAnalyzer: false,
+    });
+    config = withBundleAnalyzer(config);
+  } catch {
+    console.warn('⚠️  @next/bundle-analyzer not available. Install with: npm install --save-dev @next/bundle-analyzer');
+  }
+}
+
+export default config;
