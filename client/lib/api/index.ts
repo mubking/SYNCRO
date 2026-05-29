@@ -32,7 +32,13 @@ export * from './csrf'
  */
 import { NextResponse, type NextRequest } from 'next/server'
 import { withErrorHandling, createSuccessResponse } from './errors'
-import { requireAuth, requireRole, createRequestContext, type UserRole } from './auth'
+import {
+  requireAuth,
+  requireRole,
+  createRequestContext,
+  type AuthenticatedUser,
+  type UserRole,
+} from './auth'
 import { type RequestContext, type ApiResponse } from './types'
 import { isMaintenanceMode } from './env'
 import { ApiErrors } from './errors'
@@ -53,6 +59,22 @@ type RouteOptions = {
   skipMaintenanceCheck?: boolean
   idempotent?: boolean
   skipCsrf?: boolean
+}
+
+type AuthenticatedRouteHandler = (
+  request: NextRequest,
+  context: RequestContext,
+  user: AuthenticatedUser
+) => Promise<NextResponse<ApiResponse>>
+
+type AuthenticatedRouteOptions = Omit<RouteOptions, 'requireAuth'>
+
+function assertRouteUser(
+  user: Awaited<ReturnType<typeof requireAuth>> | null | undefined
+): asserts user is AuthenticatedUser {
+  if (!user) {
+    throw ApiErrors.unauthorized('Invalid or expired session')
+  }
 }
 
 export function createApiRoute(
@@ -81,6 +103,7 @@ export function createApiRoute(
     let user: Awaited<ReturnType<typeof requireAuth>> | undefined
     if (options.requireAuth) {
       user = await requireAuth(request)
+      assertRouteUser(user)
       context.userId = user.id
       context.userEmail = user.email
 
@@ -158,4 +181,20 @@ export function createApiRoute(
 
     return response
   }, crypto.randomUUID())
+}
+
+export function createAuthenticatedApiRoute(
+  handler: AuthenticatedRouteHandler,
+  options: AuthenticatedRouteOptions = {}
+) {
+  return createApiRoute(
+    async (request, context, user) => {
+      assertRouteUser(user)
+      return handler(request, context, user)
+    },
+    {
+      ...options,
+      requireAuth: true,
+    }
+  )
 }

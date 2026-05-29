@@ -1,5 +1,5 @@
 import { type NextRequest } from "next/server"
-import { createApiRoute, createSuccessResponse, RateLimiters, ApiErrors } from "@/lib/api/index"
+import { createAuthenticatedApiRoute, createSuccessResponse, RateLimiters, ApiErrors } from "@/lib/api/index"
 import { HttpStatus } from "@/lib/api/types"
 import { createClient } from "@/lib/supabase/server"
 import { checkOwnership } from "@/lib/api/auth"
@@ -10,9 +10,8 @@ export async function POST(
 ) {
   const { id } = await params
 
-  return createApiRoute(
+  return createAuthenticatedApiRoute(
     async (req: NextRequest, context, user) => {
-      if (!user) throw ApiErrors.unauthorized("User not authenticated")
       if (!id) throw ApiErrors.notFound("Subscription")
 
       const supabase = await createClient()
@@ -47,6 +46,6 @@ export async function POST(
 
       return createSuccessResponse({ subscription: data }, HttpStatus.OK, context.requestId)
     },
-    { requireAuth: true, rateLimit: RateLimiters.standard }
+    { rateLimit: RateLimiters.standard }
   )(request)
 }

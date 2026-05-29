@@ -9,7 +9,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-import { ApiErrors, RateLimiters, createErrorResponse, validateCsrfToken } from "@/lib/api/index"
+import { ApiErrors, RateLimiters, createErrorResponse, getAuthenticatedUser, validateCsrfToken } from "@/lib/api/index"
 import { ApiException } from "@/lib/api/errors"
 import { applyRateLimitHeaders, type RateLimitHeaders } from "@/lib/api/rate-limit"
 
@@ -123,11 +123,8 @@ export async function POST(request: NextRequest) {
 
     rateLimitHeaders = RateLimiters.import(request)
 
+    const user = await getAuthenticatedUser(request)
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
 
     const isCommit = request.nextUrl.searchParams.get("commit") === "true"
     const skipDupes = request.nextUrl.searchParams.get("skip_dupes") !== "false"
@@ -221,7 +218,7 @@ export async function POST(request: NextRequest) {
       const result = rowSchema.safeParse(dataToValidate)
 
       if (!result.success) {
-        const msg = result.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")
+        const msg = result.error.issues.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")
         return { row: rowNum, status: "error" as RowStatus, data: null, error: msg }
       }
 
