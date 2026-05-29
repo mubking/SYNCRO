@@ -1,5 +1,6 @@
 import { supabase, monitorPool, PoolMetrics } from '../config/database';
 import logger from '../config/logger';
+import { ExternalServiceClient, ServiceMetrics } from '../utils/external-service-client';
 
 // ─── Existing interfaces ────────────────────────────────────────────────────
 
@@ -334,6 +335,13 @@ export class MonitoringService {
     /** Returns current DB connection pool metrics. */
     getPoolMetrics(): PoolMetrics {
         return monitorPool();
+    }
+
+    /**
+     * Get metrics for all external service dependencies.
+     */
+    getExternalServiceMetrics(): Record<string, ServiceMetrics> {
+        return ExternalServiceClient.getAllMetrics();
     }
 
     // ──────────────────────────────────────────────────────────────────────────

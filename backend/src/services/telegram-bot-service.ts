@@ -1,6 +1,6 @@
 import logger from '../config/logger';
 import { NotificationPayload, DeliveryResult } from '../types/reminder';
-import { withRetry, RetryableError, NonRetryableError } from '../utils/retry';
+import { ExternalServiceClient } from '../utils/external-service-client';
 import { sanitizeUrl } from '../utils/sanitize-url';
 
 export interface TelegramConfig {
@@ -16,6 +16,7 @@ export interface TelegramUser {
 export class TelegramBotService {
   private botToken: string | null = null;
   private apiUrl: string;
+  private client = new ExternalServiceClient('telegram');
 
   constructor(config?: TelegramConfig) {
     this.botToken = config?.botToken || process.env.TELEGRAM_BOT_TOKEN || null;
@@ -43,8 +44,7 @@ export class TelegramBotService {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/bot${this.botToken}/getMe`);
-      const data = await response.json();
+      const data = await this.client.request<any>(`${this.apiUrl}/bot${this.botToken}/getMe`);
 
       if (data.ok) {
         logger.info('[TelegramBotService] Connection verified', {
@@ -77,7 +77,7 @@ export class TelegramBotService {
     } = {}
   ): Promise<any> {
     if (!this.botToken) {
-      throw new NonRetryableError('Telegram bot token not configured');
+      throw new Error('Telegram bot token not configured');
     }
 
     const payload: any = {
@@ -91,7 +91,7 @@ export class TelegramBotService {
       payload.reply_markup = options.replyMarkup;
     }
 
-    const response = await fetch(`${this.apiUrl}/bot${this.botToken}/sendMessage`, {
+    const data = await this.client.request<any>(`${this.apiUrl}/bot${this.botToken}/sendMessage`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -99,25 +99,8 @@ export class TelegramBotService {
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
-
     if (!data.ok) {
-      // Determine if error is retryable
-      const errorCode = data.error_code;
-      const errorDescription = data.description || '';
-
-      // Non-retryable errors
-      if (
-        errorCode === 400 || // Bad request
-        errorCode === 403 || // Forbidden (bot blocked by user)
-        errorDescription.includes('chat not found') ||
-        errorDescription.includes('bot was blocked')
-      ) {
-        throw new NonRetryableError(`Telegram API error: ${errorDescription}`);
-      }
-
-      // Retryable errors (rate limits, server errors)
-      throw new RetryableError(`Telegram API error: ${errorDescription}`);
+      throw new Error(`Telegram API error: ${data.description}`);
     }
 
     return data.result;
@@ -162,8 +145,6 @@ export class TelegramBotService {
     chatId?: string,
     options: { maxAttempts?: number } = {}
   ): Promise<DeliveryResult> {
-    const { maxAttempts = 3 } = options;
-
     if (!this.isConfigured()) {
       logger.warn('[TelegramBotService] Telegram not configured, skipping notification');
       return {
@@ -190,46 +171,39 @@ export class TelegramBotService {
         };
       }
 
-      return await withRetry(
-        async () => {
-          const message = this.formatReminderMessage(payload);
-          const buttons = this.getReminderButtons(payload);
+      const message = this.formatReminderMessage(payload);
+      const buttons = this.getReminderButtons(payload);
 
-          const result = await this.sendMessage(targetChatId, message, {
-            parseMode: 'HTML',
-            disableWebPagePreview: false,
-            replyMarkup: buttons,
-          });
+      const result = await this.sendMessage(targetChatId, message, {
+        parseMode: 'HTML',
+        disableWebPagePreview: false,
+        replyMarkup: buttons,
+      });
 
-          logger.info(`[TelegramBotService] Reminder sent successfully to user ${userId}`, {
-            messageId: result.message_id,
-            chatId: targetChatId,
-          });
+      logger.info(`[TelegramBotService] Reminder sent successfully to user ${userId}`, {
+        messageId: result.message_id,
+        chatId: targetChatId,
+      });
 
-          return {
-            success: true,
-            metadata: {
-              messageId: result.message_id,
-              chatId: targetChatId,
-            },
-          };
+      return {
+        success: true,
+        metadata: {
+          messageId: result.message_id,
+          chatId: targetChatId,
         },
-        { maxAttempts }
-      );
+      };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const isRetryable = !(error instanceof NonRetryableError);
 
       logger.error(`[TelegramBotService] Failed to send reminder to user ${userId}:`, {
         error: errorMessage,
-        retryable: isRetryable,
       });
 
       return {
         success: false,
         error: errorMessage,
         metadata: {
-          retryable: isRetryable,
+          retryable: true,
         },
       };
     }

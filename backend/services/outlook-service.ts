@@ -2,7 +2,9 @@ import { parseSubscriptionEmail } from "./email-parser";
 import { generateProofHash, hashContent } from "../utils/proof-hashing";
 import { metadataExtractionOnly } from "./email-scanner";
 import type { RawScanResult } from "./email-scanner";
+import { ExternalServiceClient } from "../src/utils/external-service-client";
 
+const outlookClient = new ExternalServiceClient('outlook');
 const OUTLOOK_SCOPES = ["offline_access", "User.Read", "Mail.Read"];
 
 const KEYWORDS = [
@@ -87,16 +89,9 @@ export async function refreshOutlookToken(
 export async function getOutlookProfile(
   accessToken: string,
 ): Promise<OutlookProfile> {
-  const response = await fetch("https://graph.microsoft.com/v1.0/me", {
+  return outlookClient.request<OutlookProfile>("https://graph.microsoft.com/v1.0/me", {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Outlook profile fetch failed: ${error}`);
-  }
-
-  return response.json() as Promise<OutlookProfile>;
 }
 
 export async function scanOutlookSubscriptions({
@@ -118,7 +113,7 @@ export async function scanOutlookSubscriptions({
   url.searchParams.set("$select", "id,subject,from,receivedDateTime,body");
   url.searchParams.set("$top", String(maxResults));
 
-  const response = await fetch(url.toString(), {
+  const data = await outlookClient.request<{ value?: any[] }>(url.toString(), {
     headers: {
       Authorization: `Bearer ${token}`,
       ConsistencyLevel: "eventual",
@@ -126,12 +121,6 @@ export async function scanOutlookSubscriptions({
     },
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Outlook message scan failed: ${error}`);
-  }
-
-  const data = (await response.json()) as { value?: any[] };
   const results: RawScanResult[] = [];
 
   for (const message of data.value ?? []) {
@@ -193,19 +182,12 @@ async function requestOutlookToken(
   });
 
   const tenant = process.env.MICROSOFT_TENANT_ID ?? "common";
-  const response = await fetch(
+  return outlookClient.request<OutlookTokenResponse>(
     `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
     {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
+      body: body.toString(),
     },
   );
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Outlook token exchange failed: ${error}`);
-  }
-
-  return response.json() as Promise<OutlookTokenResponse>;
 }

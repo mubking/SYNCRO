@@ -4,7 +4,9 @@ import { parseSubscriptionEmail } from "./email-parser";
 import { generateProofHash, hashContent } from "../utils/proof-hashing";
 import { metadataExtractionOnly } from "./email-scanner";
 import type { RawScanResult } from "./email-scanner";
+import { EXTERNAL_SERVICE_POLICIES } from "../src/config/external-services";
 
+const policy = EXTERNAL_SERVICE_POLICIES.gmail;
 const GMAIL_SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 
 const KEYWORDS = [
@@ -76,7 +78,11 @@ export async function exchangeGmailCodeForTokens(
 export async function getGmailProfile(tokens: Credentials) {
   const oauth2Client = createOAuthClient();
   oauth2Client.setCredentials(tokens);
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+  const gmail = google.gmail({ 
+    version: "v1", 
+    auth: oauth2Client,
+    timeout: policy.timeoutMs,
+  });
   const profile = await gmail.users.getProfile({ userId: "me" });
   return profile.data;
 }
@@ -93,7 +99,11 @@ export async function scanGmailSubscriptions({
     refresh_token: refreshToken,
   });
 
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+  const gmail = google.gmail({ 
+    version: "v1", 
+    auth: oauth2Client,
+    timeout: policy.timeoutMs,
+  });
   const query = buildQuery(sinceDays);
 
   const listResponse = await gmail.users.messages.list({

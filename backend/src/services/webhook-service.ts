@@ -10,10 +10,11 @@ import {
   WebhookUpdateInput 
 } from '../types/webhook';
 import { webhookDeadLetterService } from './webhook-dead-letter-service';
+import { ExternalServiceClient } from '../utils/external-service-client';
 
 export class WebhookService {
-  private readonly MAX_RETRIES = 5;
   private readonly DISABLE_THRESHOLD = 10;
+  private readonly client = new ExternalServiceClient('outbound_webhooks');
 
   /**
    * Register a new webhook
@@ -214,7 +215,7 @@ export class WebhookService {
       .digest('hex');
 
     try {
-      const response = await fetch(webhook.url, {
+      const data = await this.client.request<any>(webhook.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -224,17 +225,12 @@ export class WebhookService {
         body: payloadString,
       });
 
-      const responseText = await response.text();
-      const isSuccess = response.ok;
-
-      if (isSuccess) {
-        return await this.updateDeliverySuccess(deliveryId, response.status, responseText.substring(0, 1000));
-      } else {
-        return await this.handleDeliveryFailure(deliveryId, webhook.id, response.status, responseText.substring(0, 1000));
-      }
-    } catch (err) {
+      // ExternalServiceClient throws on !response.ok, so we handle it in catch
+      return await this.updateDeliverySuccess(deliveryId, 200, JSON.stringify(data).substring(0, 1000));
+    } catch (err: any) {
+      const status = err.message.includes('status') ? parseInt(err.message.match(/\d+/)?.[0] || '0') : 0;
       const errorMsg = err instanceof Error ? err.message : String(err);
-      return await this.handleDeliveryFailure(deliveryId, webhook.id, 0, errorMsg);
+      return await this.handleDeliveryFailure(deliveryId, webhook.id, status, errorMsg);
     }
   }
 

@@ -1,5 +1,7 @@
 import logger from '../config/logger';
+import { ExternalServiceClient } from '../src/utils/external-service-client';
 
+const paystackClient = new ExternalServiceClient('paystack');
 const PAYSTACK_BASE = 'https://api.paystack.co';
 const SECRET_KEY = process.env.PAYSTACK_SECRET_KEY ?? '';
 
@@ -8,7 +10,7 @@ async function paystackRequest<T>(
   path: string,
   body?: Record<string, unknown>
 ): Promise<T> {
-  const res = await fetch(`${PAYSTACK_BASE}${path}`, {
+  const json = await paystackClient.request<{ status: boolean; message: string; data: T }>(`${PAYSTACK_BASE}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${SECRET_KEY}`,
@@ -16,8 +18,6 @@ async function paystackRequest<T>(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-
-  const json = (await res.json()) as { status: boolean; message: string; data: T };
 
   if (!json.status) {
     throw new Error(`Paystack error: ${json.message}`);

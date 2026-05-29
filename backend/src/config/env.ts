@@ -91,6 +91,10 @@ const envSchema = z.object({
 
   // Risk calculation concurrency (number of simultaneous risk calculations per page)
   RISK_CALC_CONCURRENCY: z.string().default('10'),
+
+  // External Service Defaults
+  EXTERNAL_SERVICE_DEFAULT_TIMEOUT: z.string().default('10000'),
+  EXTERNAL_SERVICE_DEFAULT_RETRIES: z.string().default('3'),
 });
 
 function validateEnv() {

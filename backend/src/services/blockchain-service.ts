@@ -15,6 +15,7 @@ import {
   getBlockchainFlags,
   resolveStellarNetwork,
 } from "../../../shared/blockchain-flags";
+import { EXTERNAL_SERVICE_POLICIES } from "../config/external-services";
 
 export type PayloadVersion = '1.0';
 
@@ -74,8 +75,7 @@ export class BlockchainService {
   private rpcUrl: string;
   private networkPassphrase: string;
   private redisClient: RedisClientType | null = null;
-  private readonly maxRetries = 3;
-  private readonly baseRetryDelayMs = 750;
+  private readonly policy = EXTERNAL_SERVICE_POLICIES.stellar_rpc;
 
   constructor() {
     this.contractAddress = process.env.SOROBAN_CONTRACT_ADDRESS || null;
@@ -529,7 +529,9 @@ export class BlockchainService {
     const contract = new Contract(this.contractAddress);
 
     let lastErr: unknown = null;
-    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+    const { maxAttempts = 3, initialDelay = 500, multiplier = 2 } = this.policy.retryPolicy;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const account = await rpc.getAccount(sourceKeypair.publicKey());
         const tx = new TransactionBuilder(account, {
@@ -537,7 +539,7 @@ export class BlockchainService {
           networkPassphrase: this.networkPassphrase,
         })
           .addOperation(contract.call(method, ...args))
-          .setTimeout(30)
+          .setTimeout(Math.floor(this.policy.timeoutMs / 1000))
           .build();
 
         const sim = await rpc.simulateTransaction(tx);
@@ -557,15 +559,15 @@ export class BlockchainService {
         const getTx = await rpc.getTransaction(send.hash);
         if (getTx.status === "NOT_FOUND") {
           // brief wait+retry fetch
-          await this.sleep(500);
+          await this.sleep(initialDelay);
         }
 
         return { transactionHash: send.hash };
       } catch (err) {
         lastErr = err;
-        const delay = this.baseRetryDelayMs * Math.pow(2, attempt);
+        const delay = Math.min(initialDelay * Math.pow(multiplier, attempt), this.policy.retryPolicy.maxDelay || 30000);
         logger.warn(
-          `Soroban tx attempt ${attempt + 1}/${this.maxRetries} failed for method ${method}: ${
+          `Soroban tx attempt ${attempt + 1}/${maxAttempts} failed for method ${method}: ${
             err instanceof Error ? err.message : String(err)
           } — retrying in ${delay}ms`,
         );
@@ -580,13 +582,13 @@ export class BlockchainService {
       payload: this.previewArgs(args),
       failedAt: new Date().toISOString(),
       errorReason: lastErr instanceof Error ? lastErr.message : String(lastErr),
-      retryCount: this.maxRetries,
+      retryCount: maxAttempts,
       contractAddress: this.contractAddress,
       rpcUrl: this.rpcUrl,
     });
 
     throw new Error(
-      `Soroban transaction failed after ${this.maxRetries} attempts: ${
+      `Soroban transaction failed after ${maxAttempts} attempts: ${
         lastErr instanceof Error ? lastErr.message : String(lastErr)
       }`,
     );
