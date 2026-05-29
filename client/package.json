@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "next build",
+    "typecheck": "tsc --noEmit",
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
@@ -21,10 +22,12 @@
     "e2e": "npx playwright test",
     "e2e:headed": "npx playwright test --headed",
     "e2e:report": "npx playwright show-report",
+    "test:a11y": "npx playwright test e2e/accessibility.spec.ts",
     "lint:deps": "node -e \"const p=require('./package.json');const bad=Object.entries({...p.dependencies,...p.devDependencies}).filter(([,v])=>v==='latest'||v==='*'||/^\\^?\\d+$/.test(v)).map(([n,v])=>n+'@'+v);if(bad.length){console.error('Loose dep ranges:',bad);process.exit(1);}else{console.log('All dep ranges OK');}\"",
     "preinstall": "npm run lint:deps"
   },
   "dependencies": {
+    "@synchro/shared": "*",
     "@tremor/react": "^3.17.4",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-accordion": "1.2.12",
@@ -86,6 +89,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
     "@chromatic-com/storybook": "^5.0.2",
     "@next/bundle-analyzer": "^15.5.15",
     "@playwright/test": "^1.59.1",

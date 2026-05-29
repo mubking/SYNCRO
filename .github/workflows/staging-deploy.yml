@@ -3,6 +3,16 @@ name: Deploy to Staging
 on:
   push:
     branches: [develop]
+    paths:
+      - 'client/**'
+      - 'shared/**'
+      - '.github/workflows/staging-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      force_full_run:
+        description: 'Force a full staging deployment'
+        type: boolean
+        default: false
 
 jobs:
   deploy-staging:

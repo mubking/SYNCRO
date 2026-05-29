@@ -3,6 +3,16 @@ name: E2E Tests
 on:
   pull_request:
     branches: [main]
+    paths:
+      - 'client/**'
+      - 'shared/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:
+    inputs:
+      force_full_run:
+        description: 'Force a full E2E run'
+        type: boolean
+        default: false
 
 jobs:
   playwright:
