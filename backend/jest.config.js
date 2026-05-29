@@ -9,11 +9,7 @@ module.exports = {
     restoreMocks: true,
     setupFiles: ['<rootDir>/tests/setup.ts'],
     transform: {
-        '^.+\\.tsx?$': 'ts-jest',
-        '^.+\\.js$': ['ts-jest', { diagnostics: false }],
-    },
-    globals: {
-        'ts-jest': {
+        '^.+\\.tsx?$': ['ts-jest', {
             diagnostics: false,
             tsconfig: {
                 target: 'ES2022',
@@ -21,7 +17,8 @@ module.exports = {
                 esModuleInterop: true,
                 skipLibCheck: true,
             },
-        },
+        }],
+        '^.+\\.js$': ['ts-jest', { diagnostics: false }],
     },
     transformIgnorePatterns: [
         '/node_modules/(?!(@stellar/stellar-sdk|uuid))',
