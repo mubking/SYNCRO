@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/node';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import swaggerUi from 'swagger-ui-express';
 import * as bip39 from 'bip39';
+import { resolveRelease, resolveEnvironment, scrubEvent, SENTRY_TAG_KEYS } from '../../shared/src/sentry';
 
 // Load environment variables before importing other modules
 dotenv.config();
@@ -12,10 +13,15 @@ dotenv.config();
 // Sentry Initialization
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV || 'development',
+  release: resolveRelease(),
+  environment: resolveEnvironment(),
   integrations: [nodeProfilingIntegration()],
-  tracesSampleRate: 0.1,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
   profilesSampleRate: 0.1,
+  initialScope: {
+    tags: { [SENTRY_TAG_KEYS.service]: 'backend' },
+  },
+  beforeSend: scrubEvent,
 });
 
 import logger from './config/logger';

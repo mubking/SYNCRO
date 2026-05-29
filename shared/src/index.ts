@@ -28,3 +28,6 @@ export * from './common';
 
 // RPC Client
 export * from './rpc-client';
+
+// Sentry shared config
+export * from './sentry';

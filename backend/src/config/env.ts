@@ -79,6 +79,9 @@ const envSchema = z.object({
 
   // Sentry (optional)
   SENTRY_DSN: z.string().optional(),
+  SENTRY_RELEASE: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().optional(),
+  COMMIT_SHA: z.string().optional(),
 
   // Secret Management
   SECRET_PROVIDER_TYPE: z.enum(['local', 'aws', 'vault']).default('local'),
