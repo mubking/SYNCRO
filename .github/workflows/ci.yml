@@ -245,6 +245,12 @@ jobs:
       - name: Run governance unit tests
         run: node --test scripts/check-issue-governance.test.js
 
+      - name: Validate CONTRIBUTING.md onboarding guide
+        run: node scripts/check-contributing.js
+
+      - name: Run CONTRIBUTING guide unit tests
+        run: node --test scripts/check-contributing.test.js
+
   # ──────────────────────────────────────────────
   # Job 3: Dependency vulnerability scan
   # Blocks PRs with High or Critical vulnerabilities.
