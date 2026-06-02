@@ -55,7 +55,6 @@ Test files use appropriate placeholder secrets:
 | `backend/tests/secret-management.test.ts` | `sk_test_123` | ✅ Clearly test data |
 | `backend/tests/logger.test.ts` | `sk_test_1234567890abcdef...` | ✅ Clearly test data |
 | `client/__tests__/lib/payment-service.test.ts` | `sk_test_123` | ✅ Clearly test data |
-| `temp_branch_files/__tests__/stripe.test.ts` | `whsec_test_secret` | ✅ Clearly test data |
 
 All test secrets follow the `sk_test_*` or `whsec_test_*` pattern, making them clearly identifiable as test data.
 

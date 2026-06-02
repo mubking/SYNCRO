@@ -520,7 +520,6 @@ This document defines clear ownership for every major directory in the SYNCRO re
 | `/build/` | Build output | Auto-generated |
 | `/.next/` | Next.js build cache | Auto-generated |
 | `/coverage/` | Test coverage reports | Auto-generated |
-| `/temp_branch_files/` | Temporary branch files | Temporary |
 | `/.kiro/` | Kiro AI configuration | Tool-specific |
 
 **Note**: These directories should not be modified manually and are excluded from version control.
