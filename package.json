@@ -16,7 +16,10 @@
     "typecheck:client": "npm run typecheck -w client",
     "typecheck:sdk": "npm run typecheck -w sdk",
     "typecheck:shared": "npm run typecheck -w shared",
-    "generate:openapi": "cd backend && npm run swagger:export"
+    "generate:openapi": "cd backend && npm run swagger:export",
+    "lint:todos": "node scripts/check-todos.mjs",
+    "check:migrations": "node scripts/check-migration-drift.js",
+    "cleanup:migrations": "node scripts/cleanup-duplicate-migrations.js"
   },
   "devDependencies": {
     "@types/node": "^25.6.0"
@@ -24,8 +27,5 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.105.0",
     "typescript": "^6.0.3"
-  },
-  "scripts": {
-    "lint:todos": "node scripts/check-todos.mjs"
   }
 }

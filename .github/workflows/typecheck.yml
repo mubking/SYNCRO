@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       force_full_run:
-        description: 'Force a full typecheck run'
+        description: "Force a full typecheck run"
         type: boolean
         default: false
 
@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         package: [backend, client, sdk, shared, root]
-    
+
     if: |
       needs.changes.outputs.force_full_run == 'true' ||
       (matrix.package == 'backend' && needs.changes.outputs.backend == 'true') ||
@@ -65,15 +65,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-      
+
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
-          
+
       - name: Install dependencies
         run: npm install
-        
+
       - name: Run Typecheck
         run: |
           if [ "${{ matrix.package }}" = "root" ]; then

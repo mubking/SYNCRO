@@ -229,6 +229,8 @@ supabase migration new <description>
 
 **Why `supabase/migrations/` wins:** SYNCRO uses Supabase as its database provider. The Supabase CLI is the authoritative migration runner. Any migrations run outside it will not be tracked in `supabase_migrations.schema_migrations` and can cause sync errors.
 
+**Rollback strategy:** Supabase does not support automatic down migrations. For destructive changes, document manual rollback SQL in a comment block at the top of the migration file.
+
 For rollback guidance see [docs/MIGRATION_ROLLBACK_PLAYBOOKS.md](./docs/MIGRATION_ROLLBACK_PLAYBOOKS.md).
 
 ## Package-specific guides
