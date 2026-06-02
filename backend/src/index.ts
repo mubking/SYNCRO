@@ -71,6 +71,7 @@ import calendarRouter from './routes/calendar';
 import userPreferencesRoutes from './routes/user-preferences';
 import reminderSettingsRoutes from './routes/reminder-settings';
 import { blockchainReconciliationService } from './services/blockchain-reconciliation-service';
+import paymentsRoutes from './routes/payments';
 import { errorHandler } from './middleware/errorHandler';
 import { swaggerSpec } from './swagger';
 
@@ -158,6 +159,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/notifications/dead-letter', notificationDeadLetterRoutes);
 app.use('/api/exchange-rates', createExchangeRatesRouter(exchangeRateService));
 app.use('/api/gift-card-ledger', giftCardLedgerRoutes);
+app.use('/api/payments', authenticate, paymentsRoutes);
 app.use('/api/telegram', telegramWebhookRoutes);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/user-preferences', authenticate, userPreferencesRoutes);

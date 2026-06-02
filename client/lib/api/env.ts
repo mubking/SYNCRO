@@ -32,10 +32,17 @@ const envSchema = z.object({
   RATE_LIMIT_TAG_MUTATION_MAX: z.string().optional(),
   RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES: z.string().optional(),
 
-  // External Services
+  // External Services — Stripe
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+  // External Services — Paystack
   PAYSTACK_SECRET_KEY: z.string().optional(),
+
+  // External Services — PayPal
+  PAYPAL_CLIENT_ID: z.string().optional(),
+  PAYPAL_CLIENT_SECRET: z.string().optional(),
+  PAYPAL_MODE: z.enum(['sandbox', 'live']).default('sandbox'),
 
   // System
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -86,6 +93,9 @@ export function getEnv(): Env {
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,
+      PAYPAL_CLIENT_ID: process.env.PAYPAL_CLIENT_ID,
+      PAYPAL_CLIENT_SECRET: process.env.PAYPAL_CLIENT_SECRET,
+      PAYPAL_MODE: process.env.PAYPAL_MODE,
       NODE_ENV: process.env.NODE_ENV,
       LOG_LEVEL: process.env.LOG_LEVEL,
       MAINTENANCE_MODE: process.env.MAINTENANCE_MODE,
@@ -102,7 +112,7 @@ export function getEnv(): Env {
       console.warn('Some environment variables are missing or invalid:', error)
       return {} as Env
     }
-    
+
     if (error instanceof z.ZodError) {
       const missing = error.errors.map((e) => e.path.join('.')).join(', ')
       throw new Error(`Missing or invalid environment variables: ${missing}`)
@@ -149,4 +159,3 @@ export function getApiConfig() {
     rateLimitEnabled: env.RATE_LIMIT_ENABLED,
   }
 }
-

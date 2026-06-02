@@ -14,7 +14,7 @@ const paymentSchema = z.object({
     .default("usd"),
   token: z.string().min(1, "Payment token is required"),
   planName: z.string().min(1, "Plan name is required"),
-  provider: z.enum(["stripe", "paypal", "mock"]).default("stripe"),
+  provider: z.enum(["stripe", "paypal", "mock", "paystack"]).default("stripe"),
 }).refine(
   (data) => isPaymentProviderEnabled(data.provider),
   (data) => ({
