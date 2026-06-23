@@ -4,16 +4,62 @@ export interface EncryptedData {
   ciphertext: string;
 }
 
-/**
- * Encrypts metadata using AES-256-GCM via Web Crypto API.
- * Works in both browser and Node.js.
- * @param plaintext Plain text to encrypt.
- * @param keyHex 32-byte encryption key as hex string.
- * @returns Encrypted data with IV and auth tag.
- */
+export interface SubscriptionMetadata {
+  name: string;
+  price: number;
+  cycle: 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  provider: string;
+}
+
+const VALID_CYCLES = new Set(['weekly', 'monthly', 'quarterly', 'yearly']);
+
+function validateSubscriptionMetadata(data: unknown): data is SubscriptionMetadata {
+  if (typeof data !== 'object' || data === null) return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    typeof obj.name === 'string' &&
+    obj.name.length > 0 &&
+    typeof obj.price === 'number' &&
+    isFinite(obj.price) &&
+    obj.price >= 0 &&
+    typeof obj.cycle === 'string' &&
+    VALID_CYCLES.has(obj.cycle) &&
+    typeof obj.provider === 'string' &&
+    obj.provider.length > 0
+  );
+}
+
+export async function encryptSubscriptionMetadata(
+  key: string,
+  metadata: SubscriptionMetadata
+): Promise<EncryptedData> {
+  if (!validateSubscriptionMetadata(metadata)) {
+    throw new Error('Invalid subscription metadata schema');
+  }
+  const plaintext = JSON.stringify(metadata);
+  return encryptMetadata(plaintext, key);
+}
+
+export async function decryptSubscriptionMetadata(
+  key: string,
+  encrypted: EncryptedData
+): Promise<SubscriptionMetadata> {
+  const plaintext = await decryptMetadata(encrypted, key);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch {
+    throw new Error('Decrypted data is not valid JSON');
+  }
+  if (!validateSubscriptionMetadata(parsed)) {
+    throw new Error('Decrypted data does not match subscription metadata schema');
+  }
+  return parsed;
+}
+
 export async function encryptMetadata(plaintext: string, keyHex: string): Promise<EncryptedData> {
   const keyBytes = hexToBytes(keyHex);
-  const iv = crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV for GCM
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await crypto.subtle.importKey(
     'raw',
     keyBytes,
@@ -28,7 +74,7 @@ export async function encryptMetadata(plaintext: string, keyHex: string): Promis
     plaintextBytes
   );
   const ciphertextWithTag = new Uint8Array(ciphertextBuffer);
-  const authTag = ciphertextWithTag.slice(-16); // GCM auth tag is 16 bytes
+  const authTag = ciphertextWithTag.slice(-16);
   const ciphertext = ciphertextWithTag.slice(0, -16);
 
   return {
@@ -38,12 +84,6 @@ export async function encryptMetadata(plaintext: string, keyHex: string): Promis
   };
 }
 
-/**
- * Decrypts metadata encrypted with encryptMetadata.
- * @param encrypted Encrypted data object.
- * @param keyHex 32-byte encryption key as hex string.
- * @returns Decrypted plain text.
- */
 export async function decryptMetadata(encrypted: EncryptedData, keyHex: string): Promise<string> {
   const keyBytes = hexToBytes(keyHex);
   const iv = hexToBytes(encrypted.iv);
