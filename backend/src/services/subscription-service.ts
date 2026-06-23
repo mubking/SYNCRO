@@ -8,6 +8,7 @@ import logger from "../config/logger";
 import { DatabaseTransaction } from "../utils/transaction";
 import SERVICE_CATEGORIES from "../../services/service-categories";
 import { validateCursor, encodeCursor } from "../utils/pagination";
+import { deriveStealthAddress } from "../../../shared/src/crypto/stealth-derive";
 import type {
   Subscription,
   SubscriptionCreateInput,
@@ -38,6 +39,25 @@ export class SubscriptionService {
   ): Promise<SubscriptionSyncResult> {
     return await DatabaseTransaction.execute(async (client) => {
       try {
+        // Determine the next stealth derivation index for this user
+        const { data: indexRow } = await client
+          .from("subscriptions")
+          .select("stealth_index")
+          .eq("user_id", userId)
+          .order("stealth_index", { ascending: false })
+          .limit(1)
+          .single();
+
+        const stealthIndex = indexRow ? (indexRow.stealth_index as number) + 1 : 0;
+
+        // Derive stealth address when a meta-address is available
+        const metaAddress = process.env.STEALTH_META_ADDRESS;
+        let stealthAddress: string | null = null;
+        if (metaAddress) {
+          // subscriptionId is not yet known; we will update after insert
+          // Store null initially and patch below once we have the row id
+        }
+
         const { data: subscription, error: dbError } = await client
           .from("subscriptions")
           .insert({
@@ -57,6 +77,8 @@ export class SubscriptionService {
             visibility: input.visibility || "private",
             tags: input.tags || [],
             email_account_id: input.email_account_id || null,
+            stealth_index: stealthIndex,
+            stealth_address: null,
             updated_at: new Date().toISOString(),
           })
           .select()
@@ -64,6 +86,16 @@ export class SubscriptionService {
 
         if (dbError) {
           throw new Error(`Database error: ${dbError.message}`);
+        }
+
+        // Now that we have the subscription id, derive and persist the stealth address
+        if (metaAddress) {
+          stealthAddress = deriveStealthAddress(metaAddress, subscription.id, stealthIndex);
+          await client
+            .from("subscriptions")
+            .update({ stealth_address: stealthAddress })
+            .eq("id", subscription.id);
+          subscription.stealth_address = stealthAddress;
         }
 
         // Attempt blockchain sync (non-blocking)
@@ -876,6 +908,38 @@ if (error) {
     }
 
     return data || [];
+  }
+
+  /**
+   * Recover all stealth addresses for a user by re-deriving them from their
+   * stored indices. Useful for wallet recovery without on-chain scanning.
+   *
+   * For each subscription with a stealth_index, computes:
+   *   Address = HMAC-SHA256(metaAddress, `${subscription.id}:${stealth_index}`)
+   *
+   * @param userId - Owner whose subscriptions to re-derive.
+   * @param metaAddress - The user's stealth meta-address (wallet-level secret).
+   * @returns Array of { subscriptionId, stealthIndex, stealthAddress }.
+   */
+  async recoverStealthAddresses(
+    userId: string,
+    metaAddress: string,
+  ): Promise<{ subscriptionId: string; stealthIndex: number; stealthAddress: string }[]> {
+    const { data: rows, error } = await supabase
+      .from("subscriptions")
+      .select("id, stealth_index")
+      .eq("user_id", userId)
+      .order("stealth_index", { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to fetch subscriptions for recovery: ${error.message}`);
+    }
+
+    return (rows ?? []).map((row) => ({
+      subscriptionId: row.id as string,
+      stealthIndex: row.stealth_index as number,
+      stealthAddress: deriveStealthAddress(metaAddress, row.id as string, row.stealth_index as number),
+    }));
   }
 
   /**
