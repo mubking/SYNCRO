@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useUserSettings } from '@/components/providers/user-settings-provider';
+import { generateStealthMetaAddress, isValidStealthMetaAddress } from '@syncro/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -136,6 +137,9 @@ export default function DataPrivacyPage() {
   const [jitterLevel, setJitterLevel] = useState<JitterLevel>('off');
   const [jitterLoading, setJitterLoading] = useState(false);
   const [jitterError, setJitterError] = useState<string | null>(null);
+  const [stealthMetaAddress, setStealthMetaAddress] = useState('');
+  const [stealthStatus, setStealthStatus] = useState<string | null>(null);
+  const [stealthLoading, setStealthLoading] = useState(false);
 
   // ── Privacy preferences state ─────────────────────────────────────────────
   const [privacyPrefs, setPrivacyPrefs] = useState({
@@ -189,36 +193,35 @@ export default function DataPrivacyPage() {
     }
   };
 
-  // ── Handle privacy preference change ──────────────────────────────────────
-  const handlePrivacyToggle = async (key: string, value: boolean) => {
-    setPrivacyLoading(true);
-    setPrivacyError(null);
+  const handleGenerateStealthAddress = () => {
+    const generated = generateStealthMetaAddress();
+    setStealthMetaAddress(generated.encoded);
+    setStealthStatus('Generated a new versioned stealth meta-address. Save it to register it.');
+  };
+
+  const handleRegisterStealthAddress = async () => {
+    if (!isValidStealthMetaAddress(stealthMetaAddress)) {
+      setStealthStatus('Enter a valid versioned stealth meta-address before saving.');
+      return;
+    }
+
+    setStealthLoading(true);
+    setStealthStatus(null);
     try {
-      const updates = { ...privacyPrefs, [key]: value };
-      await updatePrivacyPreferences(updates);
-      setPrivacyPrefs(updates);
+      const res = await fetch(`${API_BASE}/api/user/stealth-meta-address`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stealthMetaAddress: stealthMetaAddress.trim() }),
+      });
+      if (!res.ok) throw new Error('Failed to register stealth meta-address');
+      setStealthStatus('Stealth meta-address saved and protected by your account access rules.');
     } catch (err) {
-      setPrivacyError(err instanceof Error ? err.message : 'Failed to update privacy settings');
+      setStealthStatus(err instanceof Error ? err.message : 'Failed to register stealth meta-address.');
     } finally {
-      setPrivacyLoading(false);
+      setStealthLoading(false);
     }
   };
-
-  // ── Calculate privacy score ───────────────────────────────────────────────
-  const calculatePrivacyScore = () => {
-    let score = 0;
-    const maxScore = 5; // 4 toggles + 1 for privacy mode
-    
-    if (settings.privacyModeEnabled) score++;
-    if (privacyPrefs.stealthAddressesEnabled) score++;
-    if (privacyPrefs.encryptionEnabled) score++;
-    if (privacyPrefs.paymentChannelsEnabled) score++;
-    if (privacyPrefs.privateAuditLogsEnabled) score++;
-    
-    return { current: score, max: maxScore };
-  };
-
-  const privacyScore = calculatePrivacyScore();
 
   // ── Export polling ────────────────────────────────────────────────────────
   const stopPolling = useCallback(() => {
@@ -435,108 +438,45 @@ export default function DataPrivacyPage() {
             </div>
           </section>
 
-          {/* ── Section: Privacy Features ──────────────────────────────────── */}
-          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="privacy-features-heading">
-            <h2 id="privacy-features-heading" className="text-base font-semibold text-gray-900 mb-1">Privacy Features</h2>
+          {/* ── Section: Stealth Meta-address ───────────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="stealth-heading">
+            <h2 id="stealth-heading" className="text-base font-semibold text-gray-900 mb-1">Stealth Meta-address</h2>
             <p className="text-sm text-gray-500 mb-4">
-              Enable advanced privacy features to maximize anonymity and protect your subscription data.
+              Register a versioned stealth meta-address to support privacy-preserving payments and recipient discovery. The format is versioned as <span className="font-mono">syncro:stealth:v1:&lt;spend_pubkey&gt;:&lt;view_pubkey&gt;</span>.
             </p>
 
-            {privacyError && (
-              <div role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">
-                {privacyError}
-              </div>
-            )}
-
-            <div className="space-y-4">
-              {/* Stealth Addresses */}
-              <div className="flex items-center justify-between p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                <div>
-                  <label className="text-sm font-medium text-gray-900">Stealth Addresses</label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Generate unique stealth addresses for each subscription to prevent linking
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={privacyPrefs.stealthAddressesEnabled}
-                  onChange={(e) => handlePrivacyToggle('stealthAddressesEnabled', e.target.checked)}
-                  disabled={privacyLoading}
-                  className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* On-chain Metadata Encryption */}
-              <div className="flex items-center justify-between p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                <div>
-                  <label className="text-sm font-medium text-gray-900">On-chain Metadata Encryption</label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Encrypt subscription metadata before storing on-chain
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={privacyPrefs.encryptionEnabled}
-                  onChange={(e) => handlePrivacyToggle('encryptionEnabled', e.target.checked)}
-                  disabled={privacyLoading}
-                  className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Payment Channels */}
-              <div className="flex items-center justify-between p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                <div>
-                  <label className="text-sm font-medium text-gray-900">Payment Channels</label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use payment channels for off-chain transactions without blockchain visibility
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={privacyPrefs.paymentChannelsEnabled}
-                  onChange={(e) => handlePrivacyToggle('paymentChannelsEnabled', e.target.checked)}
-                  disabled={privacyLoading}
-                  className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Private Audit Logs */}
-              <div className="flex items-center justify-between p-4 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors">
-                <div>
-                  <label className="text-sm font-medium text-gray-900">Private Audit Logs</label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Store audit logs with commitment blinding for privacy-preserving audits
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={privacyPrefs.privateAuditLogsEnabled}
-                  onChange={(e) => handlePrivacyToggle('privateAuditLogsEnabled', e.target.checked)}
-                  disabled={privacyLoading}
-                  className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-              </div>
-
-              {/* Gift Card Provider */}
-              <div className="p-4 border border-gray-100 rounded-lg">
-                <label htmlFor="gift-card-provider" className="text-sm font-medium text-gray-900">
-                  Preferred Gift Card Provider
-                </label>
-                <p className="text-xs text-gray-500 mt-1 mb-3">
-                  Choose your default provider for redeeming subscription gift cards
-                </p>
-                <select
-                  id="gift-card-provider"
-                  value={privacyPrefs.preferredGiftCardProvider}
-                  onChange={(e) => handlePrivacyToggle('preferredGiftCardProvider', e.target.value as any)}
-                  disabled={privacyLoading}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            <div className="space-y-3">
+              <label htmlFor="stealth-meta-address" className="block text-sm font-medium text-gray-700">
+                Meta-address
+              </label>
+              <textarea
+                id="stealth-meta-address"
+                value={stealthMetaAddress}
+                onChange={(e) => setStealthMetaAddress(e.target.value)}
+                rows={3}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="syncro:stealth:v1:64hex:64hex"
+              />
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleGenerateStealthAddress}
+                  className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <option value="paypal">PayPal</option>
-                  <option value="stripe">Stripe</option>
-                  <option value="square">Square</option>
-                </select>
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRegisterStealthAddress}
+                  disabled={stealthLoading}
+                  className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {stealthLoading ? 'Saving…' : 'Save'}
+                </button>
               </div>
+              {stealthStatus && (
+                <p className="text-sm text-gray-600">{stealthStatus}</p>
+              )}
             </div>
           </section>
 

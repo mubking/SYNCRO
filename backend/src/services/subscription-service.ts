@@ -50,13 +50,19 @@ export class SubscriptionService {
 
         const stealthIndex = indexRow ? (indexRow.stealth_index as number) + 1 : 0;
 
-        // Derive stealth address when a meta-address is available
-        const metaAddress = process.env.STEALTH_META_ADDRESS;
-        let stealthAddress: string | null = null;
-        if (metaAddress) {
-          // subscriptionId is not yet known; we will update after insert
-          // Store null initially and patch below once we have the row id
+        // Derive stealth address when the user has a stored stealth meta-address.
+        const { data: profile, error: profileError } = await client
+          .from('profiles')
+          .select('stealth_meta_address')
+          .eq('id', userId)
+          .single();
+
+        if (profileError) {
+          throw new Error(`Failed to load user profile: ${profileError.message}`);
         }
+
+        const metaAddress = profile?.stealth_meta_address ?? null;
+        let stealthAddress: string | null = null;
 
         const { data: subscription, error: dbError } = await client
           .from("subscriptions")

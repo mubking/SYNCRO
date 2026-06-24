@@ -1,4 +1,5 @@
 import { getBlockchainFlags } from '../../shared/blockchain-flags';
+import { deriveKeyHex } from '../../shared/src/crypto/key-derivation';
 
 type WalletInfo = {
   publicKey: string;
@@ -6,8 +7,8 @@ type WalletInfo = {
   connectedAt: number;
 };
 
-type WalletEventType = 'walletConnected' | 'walletDisconnected';
-type WalletEventHandler = (info?: WalletInfo) => void;
+type WalletEventType = 'walletConnected' | 'walletDisconnected' | 'walletChanged';
+type WalletEventHandler = (info?: WalletInfo, oldInfo?: WalletInfo) => void;
 
 class StellarWalletService {
   private wallet: WalletInfo | null = null;
@@ -37,9 +38,18 @@ class StellarWalletService {
     const publicKey = await freighter.getPublicKey();
     if (!publicKey) throw new Error('Failed to get public key');
 
+    const oldWallet = this.wallet;
+    const isWalletChange = oldWallet && oldWallet.publicKey !== publicKey;
+
     this.wallet = { publicKey, network, connectedAt: Date.now() };
     this.saveSession();
-    this.emit('walletConnected', this.wallet);
+
+    if (isWalletChange) {
+      // Emit wallet change event with both old and new wallet info
+      this.emit('walletChanged', this.wallet, oldWallet);
+    } else {
+      this.emit('walletConnected', this.wallet);
+    }
 
     return this.wallet;
   }
@@ -85,8 +95,28 @@ class StellarWalletService {
     this.listeners.get(event)?.delete(handler);
   }
 
-  private emit(event: WalletEventType, info?: WalletInfo): void {
-    this.listeners.get(event)?.forEach(handler => handler(info));
+  private emit(event: WalletEventType, info?: WalletInfo, oldInfo?: WalletInfo): void {
+    this.listeners.get(event)?.forEach(handler => handler(info, oldInfo));
+  }
+
+  /**
+   * Derives an encryption key from the wallet's public key using HKDF-SHA256
+   * @param salt Optional salt for key derivation (defaults to 'syncro-encryption')
+   * @returns Hex-encoded 256-bit encryption key
+   */
+  deriveEncryptionKey(publicKey?: string, salt: string = 'syncro-encryption'): string {
+    const key = publicKey || this.wallet?.publicKey;
+    if (!key) throw new Error('No wallet connected for key derivation');
+
+    const encoder = new TextEncoder();
+    const saltBytes = encoder.encode(salt);
+    const info = encoder.encode('subscription-metadata-encryption-v1');
+
+    return deriveKeyHex(key, {
+      salt: saltBytes,
+      info: info,
+      length: 32,
+    });
   }
 
   private saveSession(): void {

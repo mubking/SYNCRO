@@ -3,6 +3,7 @@ import { supabase } from '../config/database';
 import { blockchainService } from './blockchain-service';
 import { webhookService } from './webhook-service';
 import { addMonths, addQuarters, addYears } from 'date-fns';
+import { deriveEphemeralStealthAddress } from '@syncro/shared/crypto';
 
 interface RenewalRequest {
   subscriptionId: string;
@@ -36,7 +37,25 @@ export class RenewalExecutor {
         return await this.logFailure(subscriptionId, userId, 'billing_window_invalid', billingWindow.reason);
       }
 
-      // Step 3: Trigger contract renewal
+      // Step 3: Derive ephemeral stealth address (if configured)
+      const stealthMetaViewKey = process.env.STEALTH_VIEW_PUBKEY;
+      const stealthMetaSpendKey = process.env.STEALTH_SPEND_PUBKEY;
+      if (stealthMetaViewKey && stealthMetaSpendKey) {
+        try {
+          const { ephemeralPubkey, stealthAddress } = deriveEphemeralStealthAddress(
+            { viewPublicKey: stealthMetaViewKey, spendPublicKey: stealthMetaSpendKey },
+            `${subscriptionId}:${approvalId}`,
+          );
+          logger.info('Stealth address derived for renewal', { subscriptionId, ephemeralPubkey, stealthAddress });
+        } catch (stealthErr) {
+          logger.warn('Stealth address derivation failed (non-fatal)', {
+            subscriptionId,
+            error: stealthErr instanceof Error ? stealthErr.message : String(stealthErr),
+          });
+        }
+      }
+
+      // Step 4: Trigger contract renewal
       const contractResult = await this.triggerContractRenewal(
         subscriptionId,
         approvalId,
@@ -47,10 +66,10 @@ export class RenewalExecutor {
         return await this.logFailure(subscriptionId, userId, 'contract_failure', contractResult.error);
       }
 
-      // Step 4: Update DB
+      // Step 5: Update DB
       await this.updateSubscription(subscriptionId, contractResult.transactionHash);
 
-      // Step 5: Log result
+      // Step 6: Log result
       await this.logSuccess(subscriptionId, userId, contractResult.transactionHash);
 
       return {

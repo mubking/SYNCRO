@@ -1,4 +1,5 @@
-import { deriveStealthAddress } from '../../shared/src/crypto/stealth-derive';
+import { deriveStealthAddress, deriveEphemeralStealthAddress } from '@syncro/shared/crypto';
+import type { StealthMetaAddress } from '@syncro/shared/crypto';
 
 // ── deriveStealthAddress unit tests ──────────────────────────────────────────
 
@@ -37,6 +38,61 @@ describe('deriveStealthAddress', () => {
 
   it('throws RangeError for non-integer index', () => {
     expect(() => deriveStealthAddress(META, SUB_ID, 1.5)).toThrow(RangeError);
+  });
+});
+
+// ── deriveEphemeralStealthAddress unit tests ──────────────────────────────────
+
+describe('deriveEphemeralStealthAddress', () => {
+  // Deterministic secp256k1 keypairs for testing (private keys → compressed pubkeys)
+  // view private key: 0x01 * 32, spend private key: 0x02 * 32
+  const VIEW_PRIV = '0101010101010101010101010101010101010101010101010101010101010101';
+  const SPEND_PRIV = '0202020202020202020202020202020202020202020202020202020202020202';
+
+  // Pre-computed from secp256k1.getPublicKey(privKey, true)
+  // We derive these at runtime to avoid hardcoding and to stay library-agnostic
+  let META: StealthMetaAddress;
+
+  beforeAll(async () => {
+    // Dynamically derive test pubkeys so the test works regardless of platform
+    const { secp256k1 } = await import('@noble/curves/secp256k1');
+    const viewPub = secp256k1.getPublicKey(VIEW_PRIV, true);
+    const spendPub = secp256k1.getPublicKey(SPEND_PRIV, true);
+    const toHex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    META = { viewPublicKey: toHex(viewPub), spendPublicKey: toHex(spendPub) };
+  });
+
+  it('returns hex strings for ephemeralPubkey and stealthAddress', () => {
+    const result = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    expect(result.ephemeralPubkey).toMatch(/^[0-9a-f]{66}$/); // 33-byte compressed secp256k1 point
+    expect(result.stealthAddress).toMatch(/^[0-9a-f]{66}$/);
+  });
+
+  it('is deterministic — same inputs produce same output', () => {
+    const r1 = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    const r2 = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    expect(r1.ephemeralPubkey).toBe(r2.ephemeralPubkey);
+    expect(r1.stealthAddress).toBe(r2.stealthAddress);
+  });
+
+  it('different entropy produces different (unlinkable) addresses', () => {
+    const r0 = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    const r1 = deriveEphemeralStealthAddress(META, 'sub-abc:1');
+    expect(r0.stealthAddress).not.toBe(r1.stealthAddress);
+    expect(r0.ephemeralPubkey).not.toBe(r1.ephemeralPubkey);
+  });
+
+  it('stealthAddress is a valid secp256k1 point', async () => {
+    const { secp256k1 } = await import('@noble/curves/secp256k1');
+    const { stealthAddress } = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    // fromHex throws if not a valid point
+    expect(() => secp256k1.ProjectivePoint.fromHex(stealthAddress)).not.toThrow();
+  });
+
+  it('ephemeralPubkey is a valid secp256k1 point', async () => {
+    const { secp256k1 } = await import('@noble/curves/secp256k1');
+    const { ephemeralPubkey } = deriveEphemeralStealthAddress(META, 'sub-abc:0');
+    expect(() => secp256k1.ProjectivePoint.fromHex(ephemeralPubkey)).not.toThrow();
   });
 });
 
