@@ -2,6 +2,8 @@ import logger from '../config/logger';
 import { supabase } from '../config/database';
 import { blockchainService } from './blockchain-service';
 import { webhookService } from './webhook-service';
+import { stealthScanner } from './stealth-scanner';
+import { createStealthMemoObject } from '../../../shared/stealth-derive';
 import { addMonths, addQuarters, addYears } from 'date-fns';
 
 interface RenewalRequest {
@@ -9,6 +11,8 @@ interface RenewalRequest {
   userId: string;
   approvalId: string;
   amount: number;
+  useStealthPayment?: boolean;
+  ephemeralPubkey?: string;
 }
 
 interface RenewalResult {
@@ -21,7 +25,7 @@ interface RenewalResult {
 
 export class RenewalExecutor {
   async executeRenewal(request: RenewalRequest): Promise<RenewalResult> {
-    const { subscriptionId, userId, approvalId, amount } = request;
+    const { subscriptionId, userId, approvalId, amount, useStealthPayment, ephemeralPubkey } = request;
 
     try {
       // Step 1: Check approval
@@ -36,22 +40,57 @@ export class RenewalExecutor {
         return await this.logFailure(subscriptionId, userId, 'billing_window_invalid', billingWindow.reason);
       }
 
-      // Step 3: Trigger contract renewal
+      // Step 3: Validate stealth payment parameters if applicable
+      if (useStealthPayment && !ephemeralPubkey) {
+        return await this.logFailure(
+          subscriptionId,
+          userId,
+          'stealth_payment_invalid',
+          'Ephemeral pubkey required for stealth payment'
+        );
+      }
+
+      // Step 4: Trigger contract renewal
       const contractResult = await this.triggerContractRenewal(
         subscriptionId,
         approvalId,
-        amount
+        amount,
+        useStealthPayment,
+        ephemeralPubkey
       );
 
       if (!contractResult.success) {
         return await this.logFailure(subscriptionId, userId, 'contract_failure', contractResult.error);
       }
 
-      // Step 4: Update DB
-      await this.updateSubscription(subscriptionId, contractResult.transactionHash);
+      // Step 5: Update DB
+      await this.updateSubscription(subscriptionId, billingWindow.billingCycle || 'monthly', contractResult.transactionHash);
 
-      // Step 5: Log result
+      // Step 6: Log result
       await this.logSuccess(subscriptionId, userId, contractResult.transactionHash);
+
+      // Step 7: If stealth payment, record in scanner
+      if (useStealthPayment && ephemeralPubkey && contractResult.transactionHash) {
+        try {
+          await stealthScanner.storeStealthPayment(
+            {
+              transactionHash: contractResult.transactionHash,
+              ephemeralPubkey,
+              recipientAddress: '',
+              amount,
+              asset: 'XLM',
+              timestamp: new Date().toISOString(),
+              ledger: 0,
+            },
+            userId
+          );
+        } catch (err) {
+          logger.error('Failed to record stealth payment:', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          // Don't fail the renewal, just log the error
+        }
+      }
 
       return {
         success: true,
@@ -147,15 +186,31 @@ export class RenewalExecutor {
   private async triggerContractRenewal(
     subscriptionId: string,
     approvalId: string,
-    amount: number
+    amount: number,
+    useStealthPayment: boolean = false,
+    ephemeralPubkey?: string
   ): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
     try {
+      const payloadData: any = { status: 'renewed', amount };
+
+      // If stealth payment, add memo data
+      if (useStealthPayment && ephemeralPubkey) {
+        const memo = createStealthMemoObject(ephemeralPubkey);
+        payloadData.stealthMemo = memo;
+        payloadData.ephemeralPubkey = ephemeralPubkey;
+
+        logger.info('Triggering stealth payment renewal', {
+          subscriptionId,
+          ephemeralPubkey,
+        });
+      }
+
       // Simulate contract interaction via blockchainService
       const result = await blockchainService.syncSubscription(
         subscriptionId,
         subscriptionId,
         'update',
-        { status: 'renewed', amount }
+        payloadData
       );
 
       return {
@@ -173,7 +228,7 @@ export class RenewalExecutor {
 
   private async updateSubscription(
     subscriptionId: string,
-    billingCycle: 'monthly' | 'quarterly' | 'yearly',
+    billingCycle: 'monthly' | 'quarterly' | 'yearly' = 'monthly',
     transactionHash?: string
   ): Promise<void> {
     const now = new Date();
