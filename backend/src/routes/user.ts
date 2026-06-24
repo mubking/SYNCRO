@@ -11,6 +11,7 @@ import { validateRequest } from '../utils/validation';
 import { userProfileUpdateSchema } from '../schemas/user-profile';
 import logger from '../config/logger';
 import { roleService } from '../services/role-service';
+import { createStealthAddressLimiter } from '../middleware/rate-limit-factory';
 
 const router = express.Router();
 router.use(authenticate);
@@ -34,7 +35,7 @@ router.get('/role', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-router.post('/stealth-meta-address', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/stealth-meta-address', createStealthAddressLimiter(), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { stealthMetaAddress } = req.body as { stealthMetaAddress?: string };
