@@ -7,6 +7,8 @@
 import express, { Response } from 'express';
 import { supabase } from '../config/database';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { validateRequest } from '../utils/validation';
+import { userProfileUpdateSchema } from '../schemas/user-profile';
 import logger from '../config/logger';
 import { roleService } from '../services/role-service';
 
@@ -145,6 +147,62 @@ router.delete('/account', async (req: AuthenticatedRequest, res: Response) => {
   } catch (error) {
     logger.error('Error deleting user account:', error);
     return res.status(500).json({ success: false, error: 'Failed to delete account' });
+  }
+});
+
+/**
+ * GET /api/user/profile
+ * Returns the current user's profile data.
+ */
+router.get('/profile', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('id, display_name, company_name, plan_type, stealth_meta_address, created_at, updated_at')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      logger.error('Error fetching user profile:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+    }
+
+    return res.status(200).json({ success: true, data: profile });
+  } catch (error) {
+    logger.error('Error fetching user profile:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+  }
+});
+
+/**
+ * PUT /api/user/profile
+ * Update profile fields such as display name, company name, or stealth meta-address.
+ */
+router.put('/profile', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const validatedData = validateRequest(userProfileUpdateSchema, req.body);
+
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .update({
+        ...validatedData,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error('Error updating user profile:', error);
+      return res.status(500).json({ success: false, error: 'Failed to update profile' });
+    }
+
+    return res.status(200).json({ success: true, data: profile });
+  } catch (error) {
+    logger.error('Error updating user profile:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update profile' });
   }
 });
 
