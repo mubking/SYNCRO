@@ -77,6 +77,7 @@ import userPreferencesRoutes from './routes/user-preferences';
 import reminderSettingsRoutes from './routes/reminder-settings';
 import { blockchainReconciliationService } from './services/blockchain-reconciliation-service';
 import paymentsRoutes from './routes/payments';
+import paystackWebhookRoutes from './routes/paystack-webhook';
 import agentWalletsRoutes from './routes/agent-wallets';
 import paymentChannelsRoutes from './routes/payment-channels';
 import { errorHandler } from './middleware/errorHandler';
@@ -184,6 +185,7 @@ app.use('/api/integrations/email', authenticate, emailRescanRoutes);
 // themselves within csp-violations.ts.
 app.use('/api/csp-violations', cspViolationsRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/webhooks/paystack', paystackWebhookRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/user', userRoutes);
