@@ -128,6 +128,8 @@ export interface UserPreferences {
   locale: string;
   calendar_sync_enabled: boolean;
   calendar_export_reminders: boolean;
+  /** id of the preferred gift-card purchasing provider (see client/lib/gift-card-providers/). */
+  preferred_gift_card_provider: string;
   /** ISO-8601 UTC string. */
   updated_at: string;
 }

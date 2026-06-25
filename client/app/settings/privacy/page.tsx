@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchUserPreferences, updateUserPreferences } from '@/lib/api/user-preferences';
+import { GIFT_CARD_PROVIDERS, DEFAULT_GIFT_CARD_PROVIDER_ID } from '@/lib/gift-card-providers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -17,6 +19,48 @@ export default function DataPrivacyPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteScheduled, setDeleteScheduled] = useState(false);
+
+  // Gift card provider state
+  const [giftCardProviderId, setGiftCardProviderId] = useState(DEFAULT_GIFT_CARD_PROVIDER_ID);
+  const [giftCardProviderLoading, setGiftCardProviderLoading] = useState(true);
+  const [giftCardProviderSaving, setGiftCardProviderSaving] = useState(false);
+  const [giftCardProviderError, setGiftCardProviderError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchUserPreferences()
+      .then((prefs) => {
+        if (!cancelled && prefs.preferred_gift_card_provider) {
+          setGiftCardProviderId(prefs.preferred_gift_card_provider);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGiftCardProviderError(err instanceof Error ? err.message : 'Failed to load preferences');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGiftCardProviderLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleGiftCardProviderChange = async (providerId: string) => {
+    const previous = giftCardProviderId;
+    setGiftCardProviderId(providerId);
+    setGiftCardProviderSaving(true);
+    setGiftCardProviderError(null);
+    try {
+      await updateUserPreferences({ preferred_gift_card_provider: providerId });
+    } catch (err) {
+      setGiftCardProviderId(previous);
+      setGiftCardProviderError(err instanceof Error ? err.message : 'Failed to save provider');
+    } finally {
+      setGiftCardProviderSaving(false);
+    }
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -120,6 +164,56 @@ export default function DataPrivacyPage() {
             >
               Manage Email Preferences
             </Link>
+          </section>
+
+          {/* Section: Gift Card Provider */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Gift Card Purchase Provider</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Choose which provider Syncro uses when you buy a crypto-funded gift card to pay for a subscription.
+              Providers vary in Tor support, KYC requirements, and accepted cryptocurrencies.
+            </p>
+
+            {giftCardProviderError && (
+              <p className="text-sm text-red-600 mb-3">{giftCardProviderError}</p>
+            )}
+
+            {giftCardProviderLoading ? (
+              <p className="text-sm text-gray-400">Loading...</p>
+            ) : (
+              <div className="space-y-2">
+                {GIFT_CARD_PROVIDERS.map((provider) => (
+                  <label
+                    key={provider.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      giftCardProviderId === provider.id
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="gift-card-provider"
+                      className="mt-1 w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                      checked={giftCardProviderId === provider.id}
+                      disabled={giftCardProviderSaving}
+                      onChange={() => handleGiftCardProviderChange(provider.id)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-gray-900">
+                        {provider.name}
+                        {provider.torSupport && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                            Tor-friendly
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{provider.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Section 3: Delete Account */}

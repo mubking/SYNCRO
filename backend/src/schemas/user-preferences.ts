@@ -31,6 +31,9 @@ export const userPreferencesUpdateSchema = z.object({
   currency: z.string().min(3).max(5).optional(),
   timezone: z.string().optional(),
   locale: z.string().optional(),
+  preferred_gift_card_provider: z
+    .enum(['atomic_wallet', 'bitrefill', 'coincards'])
+    .optional(),
 });
 
 // ─── Quiet Hours Schema ─────────────────────────────────────────────────────

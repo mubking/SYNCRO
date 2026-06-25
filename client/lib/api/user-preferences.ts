@@ -22,6 +22,7 @@ export interface UserPreferences {
   currency: string
   timezone: string
   locale: string
+  preferred_gift_card_provider: string
   updated_at: string
 }
 
@@ -46,6 +47,7 @@ export interface UserPreferencesUpdateInput {
   currency?: string
   timezone?: string
   locale?: string
+  preferred_gift_card_provider?: string
 }
 
 export interface QuietHoursUpdateInput {
