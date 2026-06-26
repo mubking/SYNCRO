@@ -5,7 +5,7 @@ import logger from '../config/logger';
 import { setRequestUserId } from './requestContext';
 import * as Sentry from '@sentry/node';
 import { roleService } from '../services/role-service';
-import { auditApiKeyEvent } from '../services/audit-service';
+import { auditApiKeyEvent, emitSecurityEvent } from '../services/audit-service';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -141,6 +141,17 @@ export async function authenticate(
 
     if (error || !user) {
       logger.warn('Authentication failed', { error: error?.message });
+      const isExpired = error?.message?.toLowerCase().includes('expired');
+      await emitSecurityEvent(
+        isExpired ? 'auth.jwt_expired' : 'auth.jwt_invalid',
+        {
+          severity: 'medium',
+          resourceType: 'auth',
+          reason: error?.message || 'Invalid or expired token',
+          ipAddress: req.ip,
+          userAgent: req.headers['user-agent'] as string | undefined,
+        },
+      );
       res.status(401).json({
         error: 'Unauthorized',
         message: 'Invalid or expired token',

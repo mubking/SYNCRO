@@ -4,6 +4,7 @@ import { getServicePolicy, ServicePolicy } from '../config/external-services';
 
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
+  maxAttempts?: number;
 }
 
 export interface ServiceMetrics {
@@ -58,6 +59,7 @@ export class ExternalServiceClient {
 
     const timeoutMs = options.timeoutMs || this.policy.timeoutMs;
     const retryPolicy = this.policy.retryPolicy;
+    const maxAttempts = options.maxAttempts || retryPolicy.maxAttempts;
 
     try {
       return await withRetry(async () => {
@@ -70,12 +72,32 @@ export class ExternalServiceClient {
             signal: controller.signal,
           });
 
-          if (!response.ok) {
-            // Some status codes should not be retried (e.g., 400, 401, 403, 404)
-            if (response.status >= 400 && response.status < 500) {
-              throw new NonRetryableError(`External service ${this.serviceName} returned status ${response.status}`);
+          if (!response) {
+            throw new Error(`External service ${this.serviceName} returned no response`);
+          }
+
+          const responseOk = typeof response.ok === 'boolean' ? response.ok : true;
+          const responseStatus = typeof response.status === 'number' ? response.status : 200;
+
+          if (!responseOk) {
+            let responseBody = '';
+            try {
+              responseBody = await response.text();
+            } catch {
+              responseBody = '';
             }
-            throw new Error(`External service ${this.serviceName} returned status ${response.status}`);
+
+            const statusMessage = `External service ${this.serviceName} returned status ${responseStatus}${responseBody ? `: ${responseBody}` : ''}`;
+
+            // Some status codes should not be retried (e.g., 400, 401, 403, 404)
+            if (
+              (responseStatus >= 400 && responseStatus < 500) ||
+              responseBody.includes('invalid_grant') ||
+              responseBody.includes('interaction_required')
+            ) {
+              throw new NonRetryableError(statusMessage);
+            }
+            throw new Error(statusMessage);
           }
 
           const data = await response.json() as T;
@@ -93,7 +115,7 @@ export class ExternalServiceClient {
       }, {
         ...retryPolicy,
         // Hook into retry logic to track retries
-        maxAttempts: retryPolicy.maxAttempts,
+        maxAttempts,
       });
     } catch (error) {
       metrics.failedRequests++;

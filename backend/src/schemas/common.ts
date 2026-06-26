@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isSafeHttpUrl } from '@syncro/shared/security';
 
 // ─── Reusable URL schema ────────────────────────────────────────────────────
 /** Validates a URL string, requiring http or https protocol. */
@@ -7,14 +8,7 @@ export const safeUrlSchema = z
   .max(2000, 'URL must not exceed 2000 characters')
   .url('Must be a valid URL')
   .refine(
-    (val) => {
-      try {
-        const { protocol } = new URL(val);
-        return protocol === 'http:' || protocol === 'https:';
-      } catch {
-        return false;
-      }
-    },
+    (val) => isSafeHttpUrl(val),
     { message: 'URL must use http or https protocol' },
   );
 

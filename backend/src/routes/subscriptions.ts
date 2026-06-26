@@ -11,7 +11,7 @@ import { SUPPORTED_CURRENCIES } from '../constants/currencies';
 import logger from '../config/logger';
 import { BadRequestError } from '../errors';
 import { validateRequest } from '../utils/validation';
-import { cursorPaginationSchema } from '../schemas/common';
+import { cursorPaginationSchema, safeUrlSchema } from '../schemas/common';
 
 const router = Router();
 
@@ -29,21 +29,6 @@ const upload = multer({
 });
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
-
-const safeUrlSchema = z
-  .string()
-  .url('Must be a valid URL')
-  .refine(
-    (val) => {
-      try {
-        const { protocol } = new URL(val);
-        return protocol === 'http:' || protocol === 'https:';
-      } catch {
-        return false;
-      }
-    },
-    { message: 'URL must use http or https protocol' }
-  );
 
 const createSubscriptionSchema = z.object({
   name: z.string().min(1),
@@ -149,13 +134,13 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 router.post('/', async (req: AuthenticatedRequest, res: Response) => {
   const idempotencyKey = req.headers['idempotency-key'] as string;
   const validatedData = validateRequest(createSubscriptionSchema, req.body);
-  
+
   const result = await subscriptionService.createSubscription(
     req.user!.id,
     validatedData,
     idempotencyKey
   );
-  
+
   const statusCode = result.syncStatus === 'failed' ? 207 : 201;
   res.status(statusCode).json({
     success: true,
@@ -184,14 +169,14 @@ router.get('/:id', validateSubscriptionOwnership, async (req: AuthenticatedReque
 router.patch('/:id', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const expectedVersion = req.headers['if-match'] as string;
   const validatedData = validateRequest(updateSubscriptionSchema, req.body);
-  
+
   const result = await subscriptionService.updateSubscription(
     req.user!.id,
     req.params.id,
     validatedData,
     expectedVersion ? parseInt(expectedVersion, 10) : undefined
   );
-  
+
   const statusCode = result.syncStatus === 'failed' ? 207 : 200;
   res.status(statusCode).json({
     success: true,
@@ -210,11 +195,31 @@ router.patch('/:id', validateSubscriptionOwnership, async (req: AuthenticatedReq
  */
 router.delete('/:id', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const result = await subscriptionService.deleteSubscription(req.user!.id, req.params.id);
-  
+
   const statusCode = result.syncStatus === 'failed' ? 207 : 200;
   res.status(statusCode).json({
     success: true,
     message: 'Subscription deleted',
+    blockchain: {
+      synced: result.syncStatus === 'synced',
+      transactionHash: result.blockchainResult?.transactionHash,
+      error: result.blockchainResult?.error,
+    },
+  });
+});
+
+/**
+ * POST /api/subscriptions/:id/restore
+ * Restore a soft-deleted subscription
+ */
+router.post('/:id/restore', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
+  const result = await subscriptionService.restoreSubscription(req.user!.id, req.params.id);
+
+  const statusCode = result.syncStatus === 'failed' ? 207 : 200;
+  res.status(statusCode).json({
+    success: true,
+    message: 'Subscription restored',
+    data: result.subscription,
     blockchain: {
       synced: result.syncStatus === 'synced',
       transactionHash: result.blockchainResult?.transactionHash,
@@ -299,7 +304,7 @@ router.get('/:id/cooldown-status', validateSubscriptionOwnership, async (req: Au
  */
 router.post('/:id/cancel', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const result = await subscriptionService.cancelSubscription(req.user!.id, req.params.id);
-  
+
   const statusCode = result.syncStatus === 'failed' ? 207 : 200;
   res.status(statusCode).json({
     success: true,
@@ -317,7 +322,7 @@ router.post('/:id/cancel', validateSubscriptionOwnership, async (req: Authentica
  */
 router.post('/:id/pause', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const { resumeAt, reason } = validateRequest(pauseSchema, req.body);
-  
+
   if (resumeAt && new Date(resumeAt) <= new Date()) {
     throw new BadRequestError('resumeAt must be a future date');
   }
@@ -346,7 +351,7 @@ router.post('/:id/pause', validateSubscriptionOwnership, async (req: Authenticat
  */
 router.post('/:id/resume', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const result = await subscriptionService.resumeSubscription(req.user!.id, req.params.id);
-  
+
   const statusCode = result.syncStatus === 'failed' ? 207 : 200;
   res.status(statusCode).json({
     success: true,
@@ -364,7 +369,7 @@ router.post('/:id/resume', validateSubscriptionOwnership, async (req: Authentica
  */
 router.post('/bulk', validateBulkSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const { operation, ids, data } = validateRequest(bulkOperationSchema, req.body);
-  
+
   const results = [];
   const errors = [];
 
@@ -395,7 +400,7 @@ router.post('/bulk', validateBulkSubscriptionOwnership, async (req: Authenticate
  */
 router.patch('/:id/notification-preferences', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const validatedData = validateRequest(notificationPreferencesSchema, req.body);
-  
+
   const preferences = await notificationPreferenceService.upsertPreferences(
     req.params.id,
     validatedData
@@ -409,7 +414,7 @@ router.patch('/:id/notification-preferences', validateSubscriptionOwnership, asy
  */
 router.post('/:id/snooze', validateSubscriptionOwnership, async (req: AuthenticatedRequest, res: Response) => {
   const { until } = validateRequest(snoozeSchema, req.body);
-  
+
   const preferences = await notificationPreferenceService.snooze(req.params.id, until);
 
   res.json({

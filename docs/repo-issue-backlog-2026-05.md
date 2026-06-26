@@ -1,5 +1,7 @@
 # Repository Issue Backlog — May 2026
 
+> **Roadmap:** Issue clusters and MVP exit criteria live in [ROADMAP.md](./ROADMAP.md).
+
 ## #35 — [P0] Eliminate accidental service-role usage from client server code
 
 **Scope:** client-api
@@ -47,3 +49,23 @@ The repo had a bundle-size CI workflow but it was rudimentary — it measured th
 - `client/next.config.mjs` — conditional bundle analyzer integration
 - `.github/workflows/bundle-size.yml` — CI workflow
 - `client/__tests__/lib/check-bundle-size.test.ts` — unit tests
+
+## #598 — [P0] Unify conflicting Next.js configuration files
+
+**Scope:** architecture
+**Priority:** P0
+
+**Summary:**
+The repo contained three conflicting Next.js config files: a root-level `next.config.js` (stale CJS, no Sentry/images/headers), a root-level `next.config.ts` (empty placeholder), and `client/next.config.mjs` (the complete, production config). Next.js picks up the first config it finds, so the stale root-level files could silently override the real config.
+
+**Resolution:**
+- Deleted `next.config.js` (root) — stale CJS config with only bundle-analyzer and reactStrictMode
+- Deleted `next.config.ts` (root) — empty placeholder with no configuration
+- Retained `client/next.config.mjs` as the sole active config (Sentry, images, headers, reactCompiler, bundle analyzer)
+- Added CI verification step to `.github/workflows/ci.yml` (`validate-dependencies` job) that asserts no root-level `next.config.*` exists and exactly one config (`next.config.mjs`) exists under `client/`
+- Added `client/__tests__/next-config.test.ts` with 9 tests verifying the unified config shape (file existence, no stale configs, Sentry wrapping, images, headers, reactCompiler, bundle analyzer, ESM export)
+
+**Key files:**
+- `client/next.config.mjs` — sole active Next.js config
+- `.github/workflows/ci.yml` — CI enforcement step
+- `client/__tests__/next-config.test.ts` — test coverage

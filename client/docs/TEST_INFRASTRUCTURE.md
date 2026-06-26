@@ -38,6 +38,22 @@ The CI workflow includes:
 - **PR comments** with coverage changes
 - **E2E tests** across multiple browsers
 - **Flaky test reporting** with artifact uploads
+- **Accessibility tests** using Axe and Playwright
+
+## Accessibility Testing
+
+Accessibility testing is automated using `@axe-core/playwright`. Tests run against core routes to ensure compliance with WCAG 2.1 Level A and AA standards.
+
+### Running Accessibility Tests
+
+```bash
+# Run accessibility checks
+npm run test:a11y
+```
+
+### Known Violations
+
+We track and reduce accessibility violations over time. Known issues that are currently being addressed are documented in `client/e2e/accessibility.spec.ts` under the `knownViolations` array. New regressions will fail the CI build.
 
 ## Running Tests
 

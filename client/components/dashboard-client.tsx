@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import { SuggestionsPanel } from "@/components/app/SuggestionsPanel"
@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle, Info } from "lucide-react"
 import { formatDate } from "@/lib/timezone-utils"
 import { formatCurrency } from "@/lib/currency-utils"
+import { saveSubscriptionsOffline } from "@/lib/offline-cache"
 
 interface Subscription {
   id: string
@@ -49,6 +50,23 @@ export default function DashboardClient({
   const [notifications] = useState(initialNotifications)
   // initialEmailAccounts reserved for future email account display
   const [gdprLoading, setGdprLoading] = useState<"export" | "delete" | null>(null)
+
+  // Persist subscriptions for offline reading
+  useEffect(() => {
+    if (subscriptions.length > 0) {
+      saveSubscriptionsOffline(
+        subscriptions.map((s) => ({
+          id: s.id,
+          name: s.name,
+          status: s.status,
+          billing_cycle: s.billing_cycle,
+          next_renewal: s.next_renewal ?? null,
+          price: Number(s.price),
+          category: s.category ?? null,
+        })),
+      )
+    }
+  }, [subscriptions])
   const [gdprMessage, setGdprMessage] = useState<string | null>(null)
 
   const handleSignOut = async () => {

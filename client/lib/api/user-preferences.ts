@@ -23,6 +23,8 @@ export interface UserPreferences {
   timezone: string
   locale: string
   preferred_gift_card_provider: string
+  privacy_mode_enabled: boolean
+  encryption_key?: string
   updated_at: string
 }
 
@@ -48,6 +50,8 @@ export interface UserPreferencesUpdateInput {
   timezone?: string
   locale?: string
   preferred_gift_card_provider?: string
+  privacy_mode_enabled?: boolean
+  encryption_key?: string
 }
 
 export interface QuietHoursUpdateInput {

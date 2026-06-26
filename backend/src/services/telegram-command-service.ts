@@ -6,6 +6,7 @@ import { Subscription } from '../types/subscription';
 import { UserRole } from '../middleware/auth';
 import { ROLE_PERMISSIONS } from '../middleware/rbac';
 import { roleService } from './role-service';
+import { normalizeToMonthlyAmount } from '@syncro/shared/subscription-math';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -15,14 +16,8 @@ const RENEWAL_CONTEXT_TTL_MS = 5 * 60 * 1_000; // 5 minutes
 
 // ─── Monthly Cost Normalisation ───────────────────────────────────────────────
 
-const CYCLE_DIVISOR: Record<Subscription['billing_cycle'], number> = {
-  monthly: 1,
-  quarterly: 3,
-  yearly: 12,
-};
-
 export function toMonthlyAmount(price: number, cycle: Subscription['billing_cycle']): number {
-  return price / CYCLE_DIVISOR[cycle];
+  return normalizeToMonthlyAmount(price, cycle);
 }
 
 // ─── Formatting ───────────────────────────────────────────────────────────────

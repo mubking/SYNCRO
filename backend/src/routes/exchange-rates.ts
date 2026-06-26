@@ -11,6 +11,7 @@ export function createExchangeRatesRouter(exchangeRateService: ExchangeRateServi
   /**
    * GET /api/exchange-rates
    */
+  // VALIDATION_BYPASS: Manual validation for supported currency
   router.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const base = (req.query.base as string) || 'USD';
 

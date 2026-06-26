@@ -6,8 +6,9 @@ import { webhookService } from "./webhook-service";
 import { referralService } from "./referral-service";
 import logger from "../config/logger";
 import { DatabaseTransaction } from "../utils/transaction";
-import SERVICE_CATEGORIES from "../../services/service-categories";
+import SERVICE_CATEGORIES from "./service-categories";
 import { validateCursor, encodeCursor } from "../utils/pagination";
+import { deriveStealthAddress } from "../../../shared/src/crypto/stealth-derive";
 import type {
   Subscription,
   SubscriptionCreateInput,
@@ -38,6 +39,31 @@ export class SubscriptionService {
   ): Promise<SubscriptionSyncResult> {
     return await DatabaseTransaction.execute(async (client) => {
       try {
+        // Determine the next stealth derivation index for this user
+        const { data: indexRow } = await client
+          .from("subscriptions")
+          .select("stealth_index")
+          .eq("user_id", userId)
+          .order("stealth_index", { ascending: false })
+          .limit(1)
+          .single();
+
+        const stealthIndex = indexRow ? (indexRow.stealth_index as number) + 1 : 0;
+
+        // Derive stealth address when the user has a stored stealth meta-address.
+        const { data: profile, error: profileError } = await client
+          .from('profiles')
+          .select('stealth_meta_address')
+          .eq('id', userId)
+          .single();
+
+        if (profileError) {
+          throw new Error(`Failed to load user profile: ${profileError.message}`);
+        }
+
+        const metaAddress = profile?.stealth_meta_address ?? null;
+        let stealthAddress: string | null = null;
+
         const { data: subscription, error: dbError } = await client
           .from("subscriptions")
           .insert({
@@ -57,6 +83,8 @@ export class SubscriptionService {
             visibility: input.visibility || "private",
             tags: input.tags || [],
             email_account_id: input.email_account_id || null,
+            stealth_index: stealthIndex,
+            stealth_address: null,
             updated_at: new Date().toISOString(),
           })
           .select()
@@ -64,6 +92,16 @@ export class SubscriptionService {
 
         if (dbError) {
           throw new Error(`Database error: ${dbError.message}`);
+        }
+
+        // Now that we have the subscription id, derive and persist the stealth address
+        if (metaAddress) {
+          stealthAddress = deriveStealthAddress(metaAddress, subscription.id, stealthIndex);
+          await client
+            .from("subscriptions")
+            .update({ stealth_address: stealthAddress })
+            .eq("id", subscription.id);
+          subscription.stealth_address = stealthAddress;
         }
 
         // Attempt blockchain sync (non-blocking)
@@ -98,7 +136,7 @@ export class SubscriptionService {
         }
 
         // Trigger budget check (don't let it block response)
-        analyticsService.checkBudgetThreshold(userId).catch(e => 
+        analyticsService.checkBudgetThreshold(userId).catch(e =>
           logger.error('Background budget check failed:', e)
         );
 
@@ -263,7 +301,7 @@ export class SubscriptionService {
           .from("reminder_schedules")
           .delete()
           .eq("subscription_id", subscriptionId);
-        
+
         let blockchainResult;
         let syncStatus: "synced" | "partial" | "failed" = "synced";
 
@@ -308,6 +346,115 @@ export class SubscriptionService {
 
 
 
+
+  /**
+   * Restore a soft-deleted subscription
+   */
+  async restoreSubscription(
+    userId: string,
+    subscriptionId: string,
+  ): Promise<SubscriptionSyncResult> {
+    return await DatabaseTransaction.execute(async (client) => {
+      try {
+        const { data: existing, error: fetchError } = await client
+          .from("subscriptions")
+          .select("*")
+          .eq("id", subscriptionId)
+          .eq("user_id", userId)
+          .single();
+
+        if (fetchError || !existing) {
+          throw new Error("Subscription not found or access denied");
+        }
+
+        if (existing.status !== "deleted") {
+          throw new Error("Subscription is not deleted");
+        }
+
+        const { data: subscription, error: updateError } = await client
+          .from("subscriptions")
+          .update({
+            status: "active",
+            deleted_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", subscriptionId)
+          .eq("user_id", userId)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw new Error(`Restore failed: ${updateError.message}`);
+        }
+
+        let blockchainResult;
+        let syncStatus: "synced" | "partial" | "failed" = "synced";
+
+        try {
+          blockchainResult = await blockchainService.syncSubscription(
+            userId,
+            subscriptionId,
+            "create", // We sync a restore as a create on the blockchain
+            subscription,
+          );
+
+          if (!blockchainResult.success) {
+            syncStatus = "partial";
+            logger.warn("Blockchain sync failed for subscription restore", {
+              subscriptionId,
+              error: blockchainResult.error,
+            });
+          }
+        } catch (blockchainError) {
+          syncStatus = "partial";
+          logger.error("Blockchain sync error during restore (non-fatal):", blockchainError);
+          blockchainResult = {
+            success: false,
+            error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
+          };
+        }
+
+        logger.info("Subscription restored", { subscriptionId, userId, syncStatus });
+        return { subscription, blockchainResult, syncStatus };
+      } catch (error) {
+        logger.error("Subscription restore failed:", error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Hard-delete subscriptions that were soft-deleted over 30 days ago
+   */
+  async purgeDeletedSubscriptions(daysToKeep: number = 30): Promise<{ deletedCount: number }> {
+    try {
+      const purgeDate = new Date();
+      purgeDate.setDate(purgeDate.getDate() - daysToKeep);
+
+      // Perform the actual hard delete from the database
+      // This cascades into reminders and tags via foreign keys if configured correctly,
+      // otherwise, we are just relying on the direct delete.
+      const { data, error, count } = await supabase
+        .from("subscriptions")
+        .delete({ count: "exact" })
+        .eq("status", "deleted")
+        .lt("deleted_at", purgeDate.toISOString());
+
+      if (error) {
+        throw new Error(`Purge failed: ${error.message}`);
+      }
+
+      const deletedCount = count || 0;
+      if (deletedCount > 0) {
+        logger.info(`Purged ${deletedCount} soft-deleted subscriptions (older than ${daysToKeep} days).`);
+      }
+
+      return { deletedCount };
+    } catch (error) {
+      logger.error("Failed to purge deleted subscriptions:", error);
+      throw error;
+    }
+  }
 
   async pauseSubscription(
     userId: string,
@@ -604,6 +751,9 @@ export class SubscriptionService {
 
     if (options.status) {
       query = query.eq("status", options.status);
+    } else {
+      // By default exclude soft-deleted subscriptions
+      query = query.neq("status", "deleted");
     }
 
     if (options.category) {
@@ -764,6 +914,38 @@ if (error) {
     }
 
     return data || [];
+  }
+
+  /**
+   * Recover all stealth addresses for a user by re-deriving them from their
+   * stored indices. Useful for wallet recovery without on-chain scanning.
+   *
+   * For each subscription with a stealth_index, computes:
+   *   Address = HMAC-SHA256(metaAddress, `${subscription.id}:${stealth_index}`)
+   *
+   * @param userId - Owner whose subscriptions to re-derive.
+   * @param metaAddress - The user's stealth meta-address (wallet-level secret).
+   * @returns Array of { subscriptionId, stealthIndex, stealthAddress }.
+   */
+  async recoverStealthAddresses(
+    userId: string,
+    metaAddress: string,
+  ): Promise<{ subscriptionId: string; stealthIndex: number; stealthAddress: string }[]> {
+    const { data: rows, error } = await supabase
+      .from("subscriptions")
+      .select("id, stealth_index")
+      .eq("user_id", userId)
+      .order("stealth_index", { ascending: true });
+
+    if (error) {
+      throw new Error(`Failed to fetch subscriptions for recovery: ${error.message}`);
+    }
+
+    return (rows ?? []).map((row) => ({
+      subscriptionId: row.id as string,
+      stealthIndex: row.stealth_index as number,
+      stealthAddress: deriveStealthAddress(metaAddress, row.id as string, row.stealth_index as number),
+    }));
   }
 
   /**

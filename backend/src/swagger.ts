@@ -1,4 +1,5 @@
 import swaggerJSDoc from 'swagger-jsdoc';
+import type { OpenAPIV3 } from 'openapi-types';
 
 const options: swaggerJSDoc.Options = {
   definition: {
@@ -166,4 +167,4 @@ const options: swaggerJSDoc.Options = {
   apis: ['./src/routes/**/*.ts', './src/index.ts'],
 };
 
-export const swaggerSpec = swaggerJSDoc(options);
+export const swaggerSpec = swaggerJSDoc(options) as unknown as OpenAPIV3.Document;

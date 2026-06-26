@@ -11,6 +11,7 @@ import {
 } from '../types/webhook';
 import { webhookDeadLetterService } from './webhook-dead-letter-service';
 import { ExternalServiceClient } from '../utils/external-service-client';
+import { emitSecurityEvent } from './audit-service';
 
 export class WebhookService {
   private readonly DISABLE_THRESHOLD = 10;
@@ -288,6 +289,13 @@ export class WebhookService {
         `Exhausted ${this.MAX_RETRIES} retries`,
         errorReason
       );
+      emitSecurityEvent('webhook.dead_letter_exhausted', {
+        severity: 'medium',
+        resourceType: 'webhook',
+        resourceId: webhookId,
+        reason: `Delivery ${deliveryId} exhausted retries (${retryCount})`,
+        details: { deliveryId, retryCount, error: errorReason },
+      });
     } else if (retryCount <= this.MAX_RETRIES) {
       nextStatus = 'retrying';
       // Exponential backoff: 30s, 5m, 30m, 2h, 6h
@@ -333,6 +341,21 @@ export class WebhookService {
 
     if (!enabled) {
       logger.warn(`Webhook ${webhookId} disabled after ${newFailureCount} consecutive failures`);
+      emitSecurityEvent('webhook.auto_disabled', {
+        severity: 'high',
+        resourceType: 'webhook',
+        resourceId: webhookId,
+        reason: `Disabled after ${newFailureCount} consecutive failures`,
+        details: { failureCount: newFailureCount },
+      });
+    } else if (newFailureCount >= this.DISABLE_THRESHOLD / 2) {
+      emitSecurityEvent('webhook.anomalous_failure_rate', {
+        severity: 'medium',
+        resourceType: 'webhook',
+        resourceId: webhookId,
+        reason: `Elevated failure rate: ${newFailureCount}/${this.DISABLE_THRESHOLD} consecutive failures`,
+        details: { failureCount: newFailureCount, disableThreshold: this.DISABLE_THRESHOLD },
+      });
     }
 
     return data as WebhookDelivery;

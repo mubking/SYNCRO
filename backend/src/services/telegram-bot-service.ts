@@ -1,6 +1,7 @@
 import logger from '../config/logger';
 import { NotificationPayload, DeliveryResult } from '../types/reminder';
 import { ExternalServiceClient } from '../utils/external-service-client';
+import { withRetry, NonRetryableError } from '../utils/retry';
 import { sanitizeUrl } from '../utils/sanitize-url';
 
 export interface TelegramConfig {
@@ -28,6 +29,30 @@ export class TelegramBotService {
   }
 
   /**
+   * Determine whether a Telegram send failure should be retried.
+   */
+  private isRetryableError(error: unknown): boolean {
+    if (error instanceof NonRetryableError) {
+      return false;
+    }
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const nonRetryablePatterns = [
+      /bot was blocked/i,
+      /chat not found/i,
+      /unauthorized/i,
+      /forbidden/i,
+      /bad request/i,
+      /status 400/i,
+      /status 401/i,
+      /status 403/i,
+      /status 404/i,
+    ];
+
+    return !nonRetryablePatterns.some((pattern) => pattern.test(errorMessage));
+  }
+
+  /**
    * Check if Telegram service is configured
    */
   isConfigured(): boolean {
@@ -44,7 +69,19 @@ export class TelegramBotService {
     }
 
     try {
-      const data = await this.client.request<any>(`${this.apiUrl}/bot${this.botToken}/getMe`);
+      const response = await fetch(`${this.apiUrl}/bot${this.botToken}/getMe`);
+
+      const responseOk = typeof response.ok === 'boolean' ? response.ok : true;
+      const responseStatus = typeof response.status === 'number' ? response.status : 200;
+
+      if (!responseOk) {
+        logger.error('[TelegramBotService] Connection verification failed', {
+          error: `HTTP ${responseStatus}`,
+        });
+        return false;
+      }
+
+      const data = await response.json();
 
       if (data.ok) {
         logger.info('[TelegramBotService] Connection verified', {
@@ -74,6 +111,7 @@ export class TelegramBotService {
       parseMode?: 'Markdown' | 'HTML';
       disableWebPagePreview?: boolean;
       replyMarkup?: any;
+      maxAttempts?: number;
     } = {}
   ): Promise<any> {
     if (!this.botToken) {
@@ -97,10 +135,18 @@ export class TelegramBotService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      maxAttempts: options.maxAttempts,
     });
 
     if (!data.ok) {
-      throw new Error(`Telegram API error: ${data.description}`);
+      const errorMessage = data.description || 'Telegram API error';
+      const errorCode = typeof data.error_code === 'number' ? data.error_code : undefined;
+
+      if (errorCode && errorCode >= 400 && errorCode < 500 && errorCode !== 429) {
+        throw new NonRetryableError(`Telegram API error: ${errorMessage}`);
+      }
+
+      throw new Error(`Telegram API error: ${errorMessage}`);
     }
 
     return data.result;
@@ -157,41 +203,43 @@ export class TelegramBotService {
     }
 
     try {
-      // Get chat ID if not provided
-      const targetChatId = chatId || await this.getChatIdForUser(userId);
+      const maxAttempts = options.maxAttempts || 3;
 
-      if (!targetChatId) {
-        logger.warn(`[TelegramBotService] No Telegram chat ID found for user ${userId}`);
-        return {
-          success: false,
-          error: 'User has not connected Telegram account',
-          metadata: {
-            retryable: false,
-          },
-        };
-      }
+      return await withRetry(
+        async () => {
+          // Get chat ID if not provided
+          const targetChatId = chatId || await this.getChatIdForUser(userId);
 
-      const message = this.formatReminderMessage(payload);
-      const buttons = this.getReminderButtons(payload);
+          if (!targetChatId) {
+            logger.warn(`[TelegramBotService] No Telegram chat ID found for user ${userId}`);
+            throw new NonRetryableError('User has not connected Telegram account');
+          }
 
-      const result = await this.sendMessage(targetChatId, message, {
-        parseMode: 'HTML',
-        disableWebPagePreview: false,
-        replyMarkup: buttons,
-      });
+          const message = this.formatReminderMessage(payload);
+          const buttons = this.getReminderButtons(payload);
 
-      logger.info(`[TelegramBotService] Reminder sent successfully to user ${userId}`, {
-        messageId: result.message_id,
-        chatId: targetChatId,
-      });
+          const result = await this.sendMessage(targetChatId, message, {
+            parseMode: 'HTML',
+            disableWebPagePreview: false,
+            replyMarkup: buttons,
+            maxAttempts: 1,
+          });
 
-      return {
-        success: true,
-        metadata: {
-          messageId: result.message_id,
-          chatId: targetChatId,
+          logger.info(`[TelegramBotService] Reminder sent successfully to user ${userId}`, {
+            messageId: result.message_id,
+            chatId: targetChatId,
+          });
+
+          return {
+            success: true,
+            metadata: {
+              messageId: result.message_id,
+              chatId: targetChatId,
+            },
+          };
         },
-      };
+        { maxAttempts }
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -203,7 +251,7 @@ export class TelegramBotService {
         success: false,
         error: errorMessage,
         metadata: {
-          retryable: true,
+          retryable: this.isRetryableError(error),
         },
       };
     }
@@ -339,7 +387,7 @@ export class TelegramBotService {
       );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const isRetryable = !(error instanceof NonRetryableError);
+      const isRetryable = this.isRetryableError(error);
 
       logger.error(`[TelegramBotService] Failed to send message to user ${userId}:`, errorMessage);
 
@@ -434,7 +482,7 @@ ${factorsText}
       return {
         success: false,
         error: errorMessage,
-        metadata: { retryable: !(error instanceof NonRetryableError) },
+        metadata: { retryable: this.isRetryableError(error) },
       };
     }
   }

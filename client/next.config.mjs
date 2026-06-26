@@ -2,6 +2,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ['@syncro/shared'],
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -19,6 +20,15 @@ const nextConfig = {
   },
   async headers() {
     return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Referrer-Policy',
+            value: 'no-referrer',
+          },
+        ],
+      },
       {
         source: '/sw.js',
         headers: [
