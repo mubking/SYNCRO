@@ -480,6 +480,20 @@ export default function DataPrivacyPage() {
             </div>
           </section>
 
+          {/* ── Section: Stealth Payment Recovery ────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="recovery-heading">
+            <h2 id="recovery-heading" className="text-base font-semibold text-gray-900 mb-1">Stealth Payment Recovery</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Reconstruct your full stealth payment history directly from the Stellar ledger using your viewing key. This process scans for all payments to your stealth addresses and may take several minutes.
+            </p>
+            <Link
+              href="/settings/privacy/recovery"
+              className="inline-flex px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Start Recovery Scan
+            </Link>
+          </section>
+
           {/* ── Section: Reminder Jitter ────────────────────────────────────────── */}
           <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="jitter-heading">
             <h2 id="jitter-heading" className="text-base font-semibold text-gray-900 mb-1">Reminder Timing Jitter</h2>

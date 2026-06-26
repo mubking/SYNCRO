@@ -77,6 +77,46 @@ class StellarWalletService {
     if (wasConnected) this.emit('walletDisconnected');
   }
 
+  /**
+   * Checks if recovery should be offered after wallet reconnect
+   * Returns true if user has stealth addresses configured but no recent recovery
+   */
+  async shouldOfferRecovery(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE}/api/privacy/stealth/status`, {
+        credentials: 'include',
+      });
+      
+      if (!response.ok) return false;
+      
+      const data = await response.json();
+      
+      // Show recovery option if stealth is configured
+      if (!data.configured) return false;
+      
+      // Check if recovery has been run recently (last 7 days)
+      const lastRecoveryTime = localStorage.getItem('lastStealthRecovery');
+      if (!lastRecoveryTime) return true; // Never run, should offer
+      
+      const daysSinceRecovery = (Date.now() - parseInt(lastRecoveryTime, 10)) / (1000 * 60 * 60 * 24);
+      return daysSinceRecovery > 7; // Offer if not run in last 7 days
+    } catch (err) {
+      console.error('Failed to check recovery status:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Mark that recovery was run (for throttling offers)
+   */
+  recordRecoveryRun(): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('lastStealthRecovery', Date.now().toString());
+  }
+
   getWallet(): WalletInfo | null {
     return this.wallet;
   }
