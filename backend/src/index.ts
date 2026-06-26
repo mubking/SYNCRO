@@ -68,6 +68,7 @@ import { adminAuth } from './middleware/admin';
 import { createAdminLimiter, RateLimiterFactory } from './middleware/rate-limit-factory';
 import { scheduleAutoResume } from './jobs/auto-resume';
 import { startSettlementBatchJob } from './jobs/settlement-batch-job';
+import { startChannelSettlementJob } from './jobs/channel-settlement-job';
 import { startJobAlertMonitor, stopJobAlertMonitor } from './jobs/job-alert-monitor';
 import giftCardLedgerRoutes from './routes/gift-card-ledger';
 import notificationDeadLetterRoutes from './routes/notification-dead-letter';
@@ -487,6 +488,7 @@ const server = app.listen(PORT, async () => {
 
   scheduleAutoResume();
   startSettlementBatchJob();
+  startChannelSettlementJob();
   startJobAlertMonitor();
 
   telegramCommandService.init();
