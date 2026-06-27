@@ -7,6 +7,9 @@ export interface HKDFOptions {
   length?: number;
 }
 
+const SUBSCRIPTION_KEY_SALT = new TextEncoder().encode('syncro:subscription:v1');
+const SUBSCRIPTION_KEY_INFO = new TextEncoder().encode('encryption-key');
+
 /**
  * Derives a key using HKDF from Stellar keys or other secret material.
  * @param ikm Input key material (secret).
@@ -30,6 +33,27 @@ export function deriveKey(ikm: Uint8Array, options: HKDFOptions = {}): Uint8Arra
 export function deriveKeyHex(ikmHex: string, options: HKDFOptions = {}): string {
   const ikm = hexToBytes(ikmHex);
   const derived = deriveKey(ikm, options);
+  return bytesToHex(derived);
+}
+
+/**
+ * Derives a 256-bit AES encryption key from a Stellar Ed25519 signing key seed.
+ *
+ * Uses HKDF-SHA256 with:
+ *   salt = "syncro:subscription:v1"
+ *   info = "encryption-key"
+ *
+ * Deterministic: same Stellar key always produces the same encryption key.
+ * Works in both browser (SubtleCrypto) and Node.js environments.
+ *
+ * @param stellarSecretKeySeed - Raw 32-byte Ed25519 seed (from StrKey.decodeEd25519SecretSeed).
+ * @returns 32-byte AES key as a lowercase hex string.
+ */
+export function deriveSubscriptionEncryptionKey(stellarSecretKeySeed: Uint8Array): string {
+  if (stellarSecretKeySeed.length !== 32) {
+    throw new Error('Stellar secret key seed must be exactly 32 bytes');
+  }
+  const derived = hkdf(sha256, stellarSecretKeySeed, SUBSCRIPTION_KEY_SALT, SUBSCRIPTION_KEY_INFO, 32);
   return bytesToHex(derived);
 }
 

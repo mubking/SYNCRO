@@ -45,10 +45,13 @@ import digestRoutes from './routes/digest';
 import mfaRoutes from './routes/mfa';
 import pushNotificationRoutes from './routes/push-notifications';
 import walletRoutes from './routes/wallet';
+import keyRotationRoutes from './routes/key-rotation';
+import privacyRoutes from './routes/privacy';
 import emailRescanRoutes from './routes/email-rescan';
-import gmailRouter from '../routes/integrations/gmail'
-import outlookRouter from '../routes/integrations/outlook'
-import slackRouter from '../routes/integrations/slack'
+import gmailRouter from './routes/integrations/gmail'
+import outlookRouter from './routes/integrations/outlook'
+import slackRouter from './routes/integrations/slack'
+import cspViolationsRoutes from './routes/csp-violations'
 import { createExchangeRatesRouter } from './routes/exchange-rates';
 import { ExchangeRateService } from './services/exchange-rate/exchange-rate-service';
 import { FiatRateProvider } from './services/exchange-rate/fiat-provider';
@@ -57,12 +60,15 @@ import { CryptoRateProvider } from './services/exchange-rate/crypto-provider';
 import { monitoringService } from './services/monitoring-service';
 import type { FailedItemsResult } from './services/monitoring-service';
 import { healthService } from './services/health-service';
+import { dependencyHealthService } from './services/dependency-health-service';
 import { eventListener } from './services/event-listener';
 import { expiryService } from './services/expiry-service';
 import { authenticate } from './middleware/auth'
 import { adminAuth } from './middleware/admin';
 import { createAdminLimiter, RateLimiterFactory } from './middleware/rate-limit-factory';
 import { scheduleAutoResume } from './jobs/auto-resume';
+import { startSettlementBatchJob } from './jobs/settlement-batch-job';
+import { startChannelSettlementJob } from './jobs/channel-settlement-job';
 import { startJobAlertMonitor, stopJobAlertMonitor } from './jobs/job-alert-monitor';
 import giftCardLedgerRoutes from './routes/gift-card-ledger';
 import notificationDeadLetterRoutes from './routes/notification-dead-letter';
@@ -73,6 +79,9 @@ import userPreferencesRoutes from './routes/user-preferences';
 import reminderSettingsRoutes from './routes/reminder-settings';
 import { blockchainReconciliationService } from './services/blockchain-reconciliation-service';
 import paymentsRoutes from './routes/payments';
+import paystackWebhookRoutes from './routes/paystack-webhook';
+import agentWalletsRoutes from './routes/agent-wallets';
+import paymentChannelsRoutes from './routes/payment-channels';
 import { errorHandler } from './middleware/errorHandler';
 import { swaggerSpec } from './swagger';
 
@@ -125,9 +134,32 @@ app.use(express.urlencoded({ extended: true }));
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
 
-// Public Endpoints
+// Health & Readiness Endpoints (No Auth Required)
+// Liveness probe - indicates if the process is alive
+app.get('/health/live', (req, res) => {
+  const status = dependencyHealthService.getLiveness();
+  res.status(200).json(status);
+});
+
+// Readiness probe - indicates if the service is ready to accept traffic
+app.get('/health/ready', async (req, res) => {
+  try {
+    const status = await dependencyHealthService.getReadiness();
+    const httpStatus = status.status === 'ready' ? 200 : 503;
+    res.status(httpStatus).json(status);
+  } catch (error) {
+    logger.error('Readiness check failed:', error);
+    res.status(503).json({
+      status: 'not_ready',
+      timestamp: new Date().toISOString(),
+      message: 'Readiness check failed',
+    });
+  }
+});
+
+// Legacy health endpoint (deprecated - use /health/live and /health/ready)
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), deprecated: true });
 });
 
 // Swagger Documentation
@@ -149,7 +181,13 @@ app.use('/api/integrations/gmail', authenticate, gmailRouter);
 app.use('/api/integrations/outlook', authenticate, outlookRouter);
 app.use('/api/integrations/slack', authenticate, slackRouter);
 app.use('/api/integrations/email', authenticate, emailRescanRoutes);
+// No blanket `authenticate` here: POST / is called server-to-server by the
+// Next.js CSP report handler (gated by its own X-Internal-Request check);
+// the admin-only routes (stats/refresh-stats/user) apply authenticate
+// themselves within csp-violations.ts.
+app.use('/api/csp-violations', cspViolationsRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/webhooks/paystack', paystackWebhookRoutes);
 app.use('/api/compliance', complianceRoutes);
 app.use('/api/tags', tagsRoutes);
 app.use('/api/user', userRoutes);
@@ -157,10 +195,13 @@ app.use('/api/digest', digestRoutes);
 app.use('/api/mfa', mfaRoutes);
 app.use('/api/notifications/push', pushNotificationRoutes);
 app.use('/api/wallet', walletRoutes);
+app.use('/api/key-rotation', keyRotationRoutes);
+app.use('/api/privacy', privacyRoutes);
 app.use('/api/notifications/dead-letter', notificationDeadLetterRoutes);
 app.use('/api/exchange-rates', createExchangeRatesRouter(exchangeRateService));
 app.use('/api/gift-card-ledger', giftCardLedgerRoutes);
 app.use('/api/payments', authenticate, paymentsRoutes);
+app.use('/api/payment-channels', authenticate, paymentChannelsRoutes);
 app.use('/api/telegram', telegramWebhookRoutes);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/user-preferences', authenticate, userPreferencesRoutes);
@@ -172,6 +213,8 @@ app.get('/api/reminders/status', (req, res) => {
 });
 
 // Admin Monitoring Endpoints
+app.use('/api/admin/agent-wallets', createAdminLimiter(), agentWalletsRoutes);
+
 app.get('/api/admin/metrics/subscriptions', createAdminLimiter(), adminAuth, async (req, res) => {
   try {
     const metrics = await monitoringService.getSubscriptionMetrics();
@@ -444,6 +487,8 @@ const server = app.listen(PORT, async () => {
   }
 
   scheduleAutoResume();
+  startSettlementBatchJob();
+  startChannelSettlementJob();
   startJobAlertMonitor();
 
   telegramCommandService.init();

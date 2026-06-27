@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { fetchUserPreferences, updateUserPreferences } from '@/lib/api/user-preferences';
+import { GIFT_CARD_PROVIDERS, DEFAULT_GIFT_CARD_PROVIDER_ID } from '@/lib/gift-card-providers';
 import { useUserSettings } from '@/components/providers/user-settings-provider';
+import { generateStealthMetaAddress, isValidStealthMetaAddress } from '@syncro/shared';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -79,7 +82,7 @@ async function fetchUserPreferences(): Promise<{ reminder_jitter_level?: JitterL
   return json.data;
 }
 
-async function updateUserPreferences(updates: { reminder_jitter_level: JitterLevel }): Promise<void> {
+async function updateUserPreferences(updates: { reminder_jitter_level?: JitterLevel; [key: string]: any }): Promise<void> {
   const res = await fetch(`${API_BASE}/api/user-preferences`, {
     method: 'PATCH',
     credentials: 'include',
@@ -87,6 +90,25 @@ async function updateUserPreferences(updates: { reminder_jitter_level: JitterLev
     body: JSON.stringify(updates),
   });
   if (!res.ok) throw new Error('Failed to update user preferences');
+}
+
+async function fetchPrivacyPreferences(): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/privacy-preferences`, {
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error('Failed to fetch privacy preferences');
+  const json = await res.json();
+  return json.data;
+}
+
+async function updatePrivacyPreferences(updates: any): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/privacy-preferences`, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error('Failed to update privacy preferences');
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -113,10 +135,30 @@ export default function DataPrivacyPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Gift card provider state
+  const [giftCardProviderId, setGiftCardProviderId] = useState(DEFAULT_GIFT_CARD_PROVIDER_ID);
+  const [giftCardProviderLoading, setGiftCardProviderLoading] = useState(true);
+  const [giftCardProviderSaving, setGiftCardProviderSaving] = useState(false);
+  const [giftCardProviderError, setGiftCardProviderError] = useState<string | null>(null);
+
   // ── Jitter state ──────────────────────────────────────────────────────────
   const [jitterLevel, setJitterLevel] = useState<JitterLevel>('off');
   const [jitterLoading, setJitterLoading] = useState(false);
   const [jitterError, setJitterError] = useState<string | null>(null);
+  const [stealthMetaAddress, setStealthMetaAddress] = useState('');
+  const [stealthStatus, setStealthStatus] = useState<string | null>(null);
+  const [stealthLoading, setStealthLoading] = useState(false);
+
+  // ── Privacy preferences state ─────────────────────────────────────────────
+  const [privacyPrefs, setPrivacyPrefs] = useState({
+    stealthAddressesEnabled: false,
+    encryptionEnabled: false,
+    paymentChannelsEnabled: false,
+    privateAuditLogsEnabled: false,
+    preferredGiftCardProvider: 'paypal',
+  });
+  const [privacyLoading, setPrivacyLoading] = useState(false);
+  const [privacyError, setPrivacyError] = useState<string | null>(null);
 
   // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
@@ -125,16 +167,57 @@ export default function DataPrivacyPage() {
     };
   }, []);
 
-  // ── Load jitter preference ───────────────────────────────────────────────────
+  // ── Load preferences ───────────────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
     fetchUserPreferences()
-      .then(prefs => {
-        if (prefs.reminder_jitter_level) {
-          setJitterLevel(prefs.reminder_jitter_level);
+      .then((prefs) => {
+        if (!cancelled) {
+          if (prefs.preferred_gift_card_provider) {
+            setGiftCardProviderId(prefs.preferred_gift_card_provider);
+          }
+          if (prefs.reminder_jitter_level) {
+            setJitterLevel(prefs.reminder_jitter_level);
+          }
         }
       })
-      .catch(err => console.error(err));
+      .catch((err) => {
+        if (!cancelled) {
+          setGiftCardProviderError(err instanceof Error ? err.message : 'Failed to load preferences');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGiftCardProviderLoading(false);
+      });
+
+    // Load privacy preferences
+    fetchPrivacyPreferences()
+      .then(prefs => {
+        if (!cancelled && prefs) {
+          setPrivacyPrefs(prefs);
+        }
+      })
+      .catch(err => console.error('Failed to load privacy preferences:', err));
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const handleGiftCardProviderChange = async (providerId: string) => {
+    const previous = giftCardProviderId;
+    setGiftCardProviderId(providerId);
+    setGiftCardProviderSaving(true);
+    setGiftCardProviderError(null);
+    try {
+      await updateUserPreferences({ preferred_gift_card_provider: providerId });
+    } catch (err) {
+      setGiftCardProviderId(previous);
+      setGiftCardProviderError(err instanceof Error ? err.message : 'Failed to save provider');
+    } finally {
+      setGiftCardProviderSaving(false);
+    }
+  };
 
   // ── Handle jitter change ──────────────────────────────────────────────────
   const handleJitterChange = async (newLevel: JitterLevel) => {
@@ -147,6 +230,36 @@ export default function DataPrivacyPage() {
       setJitterError(err instanceof Error ? err.message : 'Failed to update preference');
     } finally {
       setJitterLoading(false);
+    }
+  };
+
+  const handleGenerateStealthAddress = () => {
+    const generated = generateStealthMetaAddress();
+    setStealthMetaAddress(generated.encoded);
+    setStealthStatus('Generated a new versioned stealth meta-address. Save it to register it.');
+  };
+
+  const handleRegisterStealthAddress = async () => {
+    if (!isValidStealthMetaAddress(stealthMetaAddress)) {
+      setStealthStatus('Enter a valid versioned stealth meta-address before saving.');
+      return;
+    }
+
+    setStealthLoading(true);
+    setStealthStatus(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/user/stealth-meta-address`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stealthMetaAddress: stealthMetaAddress.trim() }),
+      });
+      if (!res.ok) throw new Error('Failed to register stealth meta-address');
+      setStealthStatus('Stealth meta-address saved and protected by your account access rules.');
+    } catch (err) {
+      setStealthStatus(err instanceof Error ? err.message : 'Failed to register stealth meta-address.');
+    } finally {
+      setStealthLoading(false);
     }
   };
 
@@ -310,7 +423,24 @@ export default function DataPrivacyPage() {
         <h1 className="text-2xl font-semibold text-gray-900 mb-1">Data &amp; Privacy</h1>
         <p className="text-sm text-gray-500 mb-8">Manage your personal data and privacy preferences.</p>
 
-        <div className="space-y-6">
+        {/* ── Privacy Score Card ────────────────────────────────────────────── */}
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">Privacy Score</h3>
+              <p className="text-xs text-gray-600">How many privacy features you've enabled</p>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-indigo-600">{privacyScore.current}/{privacyScore.max}</div>
+              <div className="w-32 h-2 bg-gray-200 rounded-full mt-2">
+                <div
+                  className="h-full bg-indigo-600 rounded-full transition-all"
+                  style={{ width: `${(privacyScore.current / privacyScore.max) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
           {/* ── Section 1: Privacy Mode ─────────────────────────────────────────── */}
           <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="privacy-mode-heading">
             <h2 id="privacy-mode-heading" className="text-base font-semibold text-gray-900 mb-1">Privacy Mode</h2>
@@ -346,6 +476,62 @@ export default function DataPrivacyPage() {
                 </div>
               )}
             </div>
+          </section>
+
+          {/* ── Section: Stealth Meta-address ───────────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="stealth-heading">
+            <h2 id="stealth-heading" className="text-base font-semibold text-gray-900 mb-1">Stealth Meta-address</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Register a versioned stealth meta-address to support privacy-preserving payments and recipient discovery. The format is versioned as <span className="font-mono">syncro:stealth:v1:&lt;spend_pubkey&gt;:&lt;view_pubkey&gt;</span>.
+            </p>
+
+            <div className="space-y-3">
+              <label htmlFor="stealth-meta-address" className="block text-sm font-medium text-gray-700">
+                Meta-address
+              </label>
+              <textarea
+                id="stealth-meta-address"
+                value={stealthMetaAddress}
+                onChange={(e) => setStealthMetaAddress(e.target.value)}
+                rows={3}
+                className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="syncro:stealth:v1:64hex:64hex"
+              />
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleGenerateStealthAddress}
+                  className="px-4 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Generate
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRegisterStealthAddress}
+                  disabled={stealthLoading}
+                  className="px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {stealthLoading ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              {stealthStatus && (
+                <p className="text-sm text-gray-600">{stealthStatus}</p>
+              )}
+            </div>
+          </section>
+
+          {/* ── Section: Stealth Payment Recovery ────────────────────────────── */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6" aria-labelledby="recovery-heading">
+            <h2 id="recovery-heading" className="text-base font-semibold text-gray-900 mb-1">Stealth Payment Recovery</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Reconstruct your full stealth payment history directly from the Stellar ledger using your viewing key. This process scans for all payments to your stealth addresses and may take several minutes.
+            </p>
+            <Link
+              href="/settings/privacy/recovery"
+              className="inline-flex px-4 py-2 text-sm font-medium bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+            >
+              Start Recovery Scan
+            </Link>
           </section>
 
           {/* ── Section: Reminder Jitter ────────────────────────────────────────── */}
@@ -450,6 +636,56 @@ export default function DataPrivacyPage() {
             >
               Manage Email Preferences
             </Link>
+          </section>
+
+          {/* Section: Gift Card Provider */}
+          <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Gift Card Purchase Provider</h2>
+            <p className="text-sm text-gray-500 mb-4">
+              Choose which provider Syncro uses when you buy a crypto-funded gift card to pay for a subscription.
+              Providers vary in Tor support, KYC requirements, and accepted cryptocurrencies.
+            </p>
+
+            {giftCardProviderError && (
+              <p className="text-sm text-red-600 mb-3">{giftCardProviderError}</p>
+            )}
+
+            {giftCardProviderLoading ? (
+              <p className="text-sm text-gray-400">Loading...</p>
+            ) : (
+              <div className="space-y-2">
+                {GIFT_CARD_PROVIDERS.map((provider) => (
+                  <label
+                    key={provider.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      giftCardProviderId === provider.id
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="gift-card-provider"
+                      className="mt-1 w-4 h-4 text-indigo-600 focus:ring-indigo-500"
+                      checked={giftCardProviderId === provider.id}
+                      disabled={giftCardProviderSaving}
+                      onChange={() => handleGiftCardProviderChange(provider.id)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-gray-900">
+                        {provider.name}
+                        {provider.torSupport && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">
+                            Tor-friendly
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-xs text-gray-500 mt-0.5">{provider.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </section>
 
           {/* ── Section: Delete Account ─────────────────────────────────── */}

@@ -26,6 +26,6 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.0",
-    "typescript": "^6.0.3"
+    "typescript": "^5.9.3"
   }
 }

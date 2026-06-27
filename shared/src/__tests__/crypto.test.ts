@@ -1,6 +1,7 @@
 import {
   deriveKey,
   deriveKeyHex,
+  deriveSubscriptionEncryptionKey,
   encryptMetadata,
   decryptMetadata,
   encryptSubscriptionMetadata,
@@ -8,7 +9,6 @@ import {
   ed25519ToCurve25519PubKey,
   ed25519ToCurve25519SecKey,
   deriveStealthAddress,
-  deriveStealthSecretKey,
   commit,
   verify,
   buildMerkleTree,
@@ -33,6 +33,33 @@ describe('Crypto Utilities', () => {
       const derived1 = deriveKeyHex(ikm);
       const derived2 = deriveKeyHex(ikm);
       expect(derived1).toBe(derived2);
+    });
+  });
+
+  describe('deriveSubscriptionEncryptionKey', () => {
+    const seed = new Uint8Array(32).fill(0xab);
+
+    it('returns a 64-char hex string (256-bit key)', () => {
+      const key = deriveSubscriptionEncryptionKey(seed);
+      expect(key).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('is deterministic — same seed always yields the same key', () => {
+      const key1 = deriveSubscriptionEncryptionKey(seed);
+      const key2 = deriveSubscriptionEncryptionKey(seed);
+      expect(key1).toBe(key2);
+    });
+
+    it('different seeds yield different keys', () => {
+      const seed2 = new Uint8Array(32).fill(0xcd);
+      expect(deriveSubscriptionEncryptionKey(seed)).not.toBe(
+        deriveSubscriptionEncryptionKey(seed2),
+      );
+    });
+
+    it('rejects seeds that are not exactly 32 bytes', () => {
+      expect(() => deriveSubscriptionEncryptionKey(new Uint8Array(16))).toThrow();
+      expect(() => deriveSubscriptionEncryptionKey(new Uint8Array(33))).toThrow();
     });
   });
 

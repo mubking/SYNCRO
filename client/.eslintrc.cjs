@@ -12,7 +12,27 @@ module.exports = {
     "no-console": "warn",
     "@typescript-eslint/no-unused-vars": "warn",
     "react/no-unescaped-entities": "off",
-    "react-hooks/rules-of-hooks": "warn"
+    "react-hooks/rules-of-hooks": "warn",
+    // Package boundary: client must not import directly from backend or sdk source
+    "no-restricted-imports": [
+      "error",
+      {
+        patterns: [
+          {
+            group: ["../backend/**", "../../backend/**"],
+            message: "Client must not import from backend. Use the public API or @syncro/shared instead.",
+          },
+          {
+            group: ["../sdk/src/**", "../../sdk/src/**"],
+            message: "Import from the published @syncro/sdk package, not its source.",
+          },
+          {
+            group: ["../shared/src/**", "../../shared/src/**"],
+            message: "Import from @syncro/shared, not its source path.",
+          },
+        ],
+      },
+    ],
   },
   overrides: [
     {

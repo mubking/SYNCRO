@@ -1,6 +1,25 @@
-import { ed25519 } from '@noble/curves/ed25519';
+import { sha256 } from '@noble/hashes/sha256';
+import { RistrettoPoint } from '@noble/curves/ed25519';
 
-// Helper functions first
+const DOMAIN_PREFIX = 'Syncro-Pedersen-v1';
+const RISTRETTO_ORDER = 2n ** 252n + 27742317777372353535851937790883648493n;
+
+function groupOrder(): bigint {
+  return RISTRETTO_ORDER;
+}
+
+const G = RistrettoPoint.hashToCurve(sha256(new TextEncoder().encode(DOMAIN_PREFIX + '-G')));
+const H = RistrettoPoint.hashToCurve(sha256(new TextEncoder().encode(DOMAIN_PREFIX + '-H')));
+
+export interface PedersenCommitment {
+  commitment: string;
+  blindingFactor: string;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
@@ -9,69 +28,82 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+function scalarToHex(scalar: bigint): string {
+  const hex = scalar.toString(16).padStart(64, '0');
+  return hex;
 }
 
-function randomScalar(): bigint {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return bytesToScalar(bytes);
+export function hexToScalar(hex: string): bigint {
+  return BigInt('0x' + hex) % groupOrder();
 }
 
 function bytesToScalar(bytes: Uint8Array): bigint {
   let result = 0n;
-  for (let i = 0; i < 32; i++) {
+  for (let i = 0; i < bytes.length; i++) {
     result = (result << 8n) | BigInt(bytes[i]);
   }
-  return result % ed25519.CURVE.n;
+  return result % groupOrder();
 }
 
-function scalarToHex(scalar: bigint): string {
-  return scalar.toString(16).padStart(64, '0');
+function hashToScalar(...parts: string[]): bigint {
+  const input = parts.join('||');
+  const hash = sha256(new TextEncoder().encode(input));
+  return bytesToScalar(hash);
 }
 
-// Pedersen commitment parameters (using ed25519 base point and another generator)
-const G = ed25519.ExtendedPoint.BASE;
-// Use another valid ed25519 public key as H (generated from a known private key)
-const hPriv = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
-const hPub = ed25519.getPublicKey(hPriv);
-const H = ed25519.ExtendedPoint.fromHex(bytesToHex(hPub));
-
-export interface PedersenCommitment {
-  commitment: string;
-  blindingFactor: string;
+function randomScalar(): bigint {
+  const bytes = new Uint8Array(64);
+  crypto.getRandomValues(bytes);
+  return bytesToScalar(bytes);
 }
 
-/**
- * Creates a Pedersen commitment to a value.
- * @param value Value to commit to (as bigint).
- * @param blindingFactor Optional blinding factor (random if not provided).
- * @returns Pedersen commitment object.
- */
+function modGroupOrder(n: bigint): bigint {
+  const L = groupOrder();
+  return ((n % L) + L) % L;
+}
+
 export function commit(value: bigint, blindingFactor?: bigint): PedersenCommitment {
-  const r = blindingFactor || randomScalar();
-  const vG = G.multiply(value);
-  const rH = H.multiply(r);
-  const commitment = vG.add(rH);
+  const v = modGroupOrder(value);
+  const r = blindingFactor !== undefined ? modGroupOrder(blindingFactor) : randomScalar();
+  const C = G.multiply(v).add(H.multiply(r));
   return {
-    commitment: commitment.toHex(),
+    commitment: C.toHex(),
     blindingFactor: scalarToHex(r),
   };
 }
 
-/**
- * Verifies a Pedersen commitment.
- * @param value The value that was committed to.
- * @param blindingFactor The blinding factor used.
- * @param commitment The commitment to verify.
- * @returns True if the commitment is valid.
- */
 export function verify(value: bigint, blindingFactor: bigint, commitment: string): boolean {
-  const vG = G.multiply(value);
-  const rH = H.multiply(blindingFactor);
-  const expectedCommitment = vG.add(rH);
-  return expectedCommitment.toHex() === commitment;
+  try {
+    const v = modGroupOrder(value);
+    const r = modGroupOrder(blindingFactor);
+    const expected = G.multiply(v).add(H.multiply(r));
+    return expected.toHex() === commitment;
+  } catch {
+    return false;
+  }
+}
+
+export function createEventCommitment(
+  eventType: string,
+  eventData: string,
+): PedersenCommitment {
+  const v = hashToScalar(DOMAIN_PREFIX, 'event', eventType, eventData);
+  return commit(v);
+}
+
+export function verifyEventCommitment(
+  eventType: string,
+  eventData: string,
+  blindingFactor: string,
+  commitment: string,
+): boolean {
+  const v = hashToScalar(DOMAIN_PREFIX, 'event', eventType, eventData);
+  return verify(v, hexToScalar(blindingFactor), commitment);
+}
+
+export function computeEventHash(eventType: string, eventData: string): string {
+  const hash = sha256(
+    new TextEncoder().encode([DOMAIN_PREFIX, 'event', eventType, eventData].join('||')),
+  );
+  return bytesToHex(hash);
 }

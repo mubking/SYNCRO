@@ -1,4 +1,5 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const CHANNEL_STORAGE_KEY = 'syncro_payment_channels';
 
 export interface PaymentChannel {
   id: string;
@@ -18,12 +19,42 @@ export interface ChannelHistoryItem {
   description?: string;
 }
 
+function persistChannels(channels: PaymentChannel[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(CHANNEL_STORAGE_KEY, JSON.stringify(channels));
+}
+
+function loadPersistedChannels(): PaymentChannel[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(CHANNEL_STORAGE_KEY);
+  if (!stored) return [];
+  try {
+    return JSON.parse(stored) as PaymentChannel[];
+  } catch {
+    return [];
+  }
+}
+
+function upsertChannel(channel: PaymentChannel): void {
+  const channels = loadPersistedChannels();
+  const idx = channels.findIndex((c) => c.id === channel.id);
+  if (idx >= 0) channels[idx] = channel;
+  else channels.push(channel);
+  persistChannels(channels);
+}
+
 export async function getChannels(): Promise<PaymentChannel[]> {
-  const res = await fetch(`${API_BASE}/api/payment-channels`, {
-    credentials: 'include',
-  });
-  if (!res.ok) throw new Error('Failed to fetch channels');
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/payment-channels`, {
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error('Failed to fetch channels');
+    const channels = await res.json();
+    persistChannels(channels);
+    return channels;
+  } catch {
+    return loadPersistedChannels();
+  }
 }
 
 export async function openChannel(depositAmount: string, counterparty: string = 'SYNCRO Executor'): Promise<PaymentChannel> {
@@ -34,7 +65,9 @@ export async function openChannel(depositAmount: string, counterparty: string = 
     body: JSON.stringify({ depositAmount, counterparty }),
   });
   if (!res.ok) throw new Error('Failed to open channel');
-  return res.json();
+  const channel = await res.json();
+  upsertChannel(channel);
+  return channel;
 }
 
 export async function topUpChannel(channelId: string, amount: string): Promise<PaymentChannel> {
@@ -45,7 +78,9 @@ export async function topUpChannel(channelId: string, amount: string): Promise<P
     body: JSON.stringify({ amount }),
   });
   if (!res.ok) throw new Error('Failed to top up channel');
-  return res.json();
+  const channel = await res.json();
+  upsertChannel(channel);
+  return channel;
 }
 
 export async function closeChannel(channelId: string, unilateral: boolean = false): Promise<PaymentChannel> {
@@ -56,7 +91,9 @@ export async function closeChannel(channelId: string, unilateral: boolean = fals
     body: JSON.stringify({ unilateral }),
   });
   if (!res.ok) throw new Error('Failed to close channel');
-  return res.json();
+  const channel = await res.json();
+  upsertChannel(channel);
+  return channel;
 }
 
 export async function getChannel(channelId: string): Promise<PaymentChannel> {
@@ -64,5 +101,11 @@ export async function getChannel(channelId: string): Promise<PaymentChannel> {
     credentials: 'include',
   });
   if (!res.ok) throw new Error('Failed to fetch channel');
-  return res.json();
+  const channel = await res.json();
+  upsertChannel(channel);
+  return channel;
+}
+
+export function getPersistedChannels(): PaymentChannel[] {
+  return loadPersistedChannels();
 }

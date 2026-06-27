@@ -62,7 +62,7 @@ export async function encryptMetadata(plaintext: string, keyHex: string): Promis
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
     ['encrypt']
@@ -94,7 +94,7 @@ export async function decryptMetadata(encrypted: EncryptedData, keyHex: string):
   ciphertextWithTag.set(authTag, ciphertext.length);
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
     ['decrypt']
@@ -102,9 +102,9 @@ export async function decryptMetadata(encrypted: EncryptedData, keyHex: string):
 
   try {
     const plaintextBuffer = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
+      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
       key,
-      ciphertextWithTag
+      ciphertextWithTag.buffer as ArrayBuffer
     );
     return new TextDecoder().decode(plaintextBuffer);
   } catch {

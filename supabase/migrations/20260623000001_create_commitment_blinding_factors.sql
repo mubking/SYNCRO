@@ -1,35 +1,57 @@
--- Create commitment_blinding_factors table
+-- Create commitment_blinding_factors table for privacy-preserving audit logs
+-- This table stores blinding factors that allow selective disclosure of audit events
+-- while keeping on-chain commitments private.
+
 CREATE TABLE IF NOT EXISTS commitment_blinding_factors (
-  id BIGSERIAL PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  event_id VARCHAR(255) NOT NULL,
-  commitment_hash VARCHAR(255) NOT NULL,
-  blinding_factor TEXT NOT NULL,
-  event_data_plaintext JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(user_id, event_id)
+  
+  -- On-chain commitment reference
+  commitment_hash BYTEA NOT NULL,                    -- 32 bytes SHA-256 hash
+  commitment_index BIGINT NOT NULL,                   -- Monotonic on-chain index
+  
+  -- Blinding factor (encrypted at rest)
+  blinding_factor BYTEA NOT NULL,                     -- 32 bytes, encrypted with AES-256-GCM
+  
+  -- Original event data (for operational queries and GDPR export)
+  event_type TEXT NOT NULL,
+  event_data JSONB NOT NULL,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  
+  -- Constraints
+  CONSTRAINT unique_commitment_hash UNIQUE(commitment_hash),
+  CONSTRAINT unique_commitment_index UNIQUE(commitment_index),
+  CONSTRAINT check_commitment_hash_size CHECK (octet_length(commitment_hash) = 32),
+  CONSTRAINT check_blinding_factor_size CHECK (octet_length(blinding_factor) >= 32)
 );
 
-CREATE INDEX idx_commitment_blinding_factors_user_id ON commitment_blinding_factors(user_id);
-CREATE INDEX idx_commitment_blinding_factors_event_id ON commitment_blinding_factors(event_id);
-CREATE INDEX idx_commitment_blinding_factors_commitment_hash ON commitment_blinding_factors(commitment_hash);
+-- Indexes for efficient queries
+CREATE INDEX idx_blinding_factors_user ON commitment_blinding_factors(user_id);
+CREATE INDEX idx_blinding_factors_commitment ON commitment_blinding_factors(commitment_hash);
+CREATE INDEX idx_blinding_factors_index ON commitment_blinding_factors(commitment_index);
+CREATE INDEX idx_blinding_factors_event_type ON commitment_blinding_factors(event_type);
+CREATE INDEX idx_blinding_factors_created_at ON commitment_blinding_factors(created_at DESC);
 
 -- Enable RLS
 ALTER TABLE commitment_blinding_factors ENABLE ROW LEVEL SECURITY;
 
--- RLS policies
+-- RLS policies: Users can only access their own blinding factors
 CREATE POLICY "commitment_blinding_factors_select_own"
   ON commitment_blinding_factors FOR SELECT
   USING (user_id = auth.uid());
 
-CREATE POLICY "commitment_blinding_factors_insert_own"
+-- Service role can insert (for commitment generation)
+CREATE POLICY "commitment_blinding_factors_insert_service"
   ON commitment_blinding_factors FOR INSERT
-  WITH CHECK (user_id = auth.uid());
+  WITH CHECK (true);  -- Service role bypasses RLS, but policy must exist
 
-CREATE POLICY "commitment_blinding_factors_update_own"
-  ON commitment_blinding_factors FOR UPDATE
-  USING (user_id = auth.uid());
+-- Users cannot update or delete (immutable audit log)
+-- Admin/service operations use service role which bypasses RLS
 
-CREATE POLICY "commitment_blinding_factors_delete_own"
-  ON commitment_blinding_factors FOR DELETE
-  USING (user_id = auth.uid());
+-- Comments for documentation
+COMMENT ON TABLE commitment_blinding_factors IS 'Stores blinding factors for privacy-preserving audit commitments. Enables selective disclosure while keeping on-chain data private.';
+COMMENT ON COLUMN commitment_blinding_factors.commitment_hash IS 'SHA-256 hash of (event_data || blinding_factor || domain_separator)';
+COMMENT ON COLUMN commitment_blinding_factors.blinding_factor IS 'Encrypted 32-byte random blinding factor (AES-256-GCM)';
+COMMENT ON COLUMN commitment_blinding_factors.event_data IS 'Original plaintext event data for operational queries';

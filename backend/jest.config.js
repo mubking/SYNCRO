@@ -4,9 +4,9 @@ module.exports = {
     testMatch: ['**/tests/**/*.test.ts'],
     verbose: true,
     forceExit: true,
-    clearMocks: true,
-    resetMocks: true,
-    restoreMocks: true,
+    clearMocks: false,
+    resetMocks: false,
+    restoreMocks: false,
     setupFiles: ['<rootDir>/tests/setup.ts'],
     moduleNameMapper: {
         '^@syncro/shared$': '<rootDir>/../shared/src',

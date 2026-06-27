@@ -9,7 +9,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-import { ApiErrors, RateLimiters, createErrorResponse, getAuthenticatedUser, validateCsrfToken } from "@/lib/api/index"
+import { ApiErrors, RateLimiters, createErrorResponse, getAuthenticatedUser, validateCsrfToken, emitAuditEvent } from "@/lib/api/index"
 import { ApiException } from "@/lib/api/errors"
 import { applyRateLimitHeaders, type RateLimitHeaders } from "@/lib/api/rate-limit"
 import { isSafeHttpUrl } from "@syncro/shared/security"
@@ -150,9 +150,34 @@ export async function POST(request: NextRequest) {
       headers = ["name", "price", "currency", "billing_cycle", "next_renewal", "category", "renewal_url"]
       records = [] // We'll skip actual validation in privacy mode since it's done client-side
     } else if (file) {
-      // Normal mode
-      if (!file.name.endsWith(".csv")) {
-        return importJsonResponse({ success: false, error: "Only CSV files are accepted" }, 400, rateLimitHeaders)
+      // Normal mode — validate file type, MIME, and size before reading
+      const ALLOWED_MIMES = ["text/csv", "text/plain", "application/vnd.ms-excel", "application/csv"]
+      const fileMime = file.type || ""
+      const fileName = file.name || ""
+
+      if (!fileName.toLowerCase().endsWith(".csv")) {
+        return importJsonResponse(
+          { success: false, error: "Only CSV files are accepted (.csv extension required)" },
+          400,
+          rateLimitHeaders,
+        )
+      }
+
+      if (fileMime && !ALLOWED_MIMES.includes(fileMime)) {
+        return importJsonResponse(
+          { success: false, error: "Invalid file type. Only CSV files are accepted." },
+          400,
+          rateLimitHeaders,
+        )
+      }
+
+      const MAX_FILE_BYTES = 2 * 1024 * 1024 // 2 MB
+      if (file.size > MAX_FILE_BYTES) {
+        return importJsonResponse(
+          { success: false, error: "File is too large. Maximum allowed size is 2 MB." },
+          400,
+          rateLimitHeaders,
+        )
       }
 
       const text = await file.text()
@@ -322,6 +347,13 @@ export async function POST(request: NextRequest) {
       const { error } = await supabase.from("subscriptions").insert(toInsert)
       if (error) throw ApiErrors.internalError(`Import failed: ${error.message}`)
     }
+
+    emitAuditEvent({
+      userId: user.id,
+      action: "subscription.import",
+      resourceType: "subscription",
+      metadata: { imported: toInsert.length, skipped: skipDupes ? preview.duplicateCount : 0, errors: preview.errorCount },
+    })
 
     const result = {
       imported: toInsert.length,
